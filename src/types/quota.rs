@@ -48,7 +48,11 @@ impl From<QuotaResourceRef<'_>> for QuotaResource {
 impl QuotaResource {
     /// Returns the usage percentage of a QuotaResource.
     pub fn get_usage_percentage(&self) -> u64 {
-        self.usage.saturating_mul(100) / self.limit
+        self.usage
+            .saturating_mul(100)
+            .checked_div(self.limit)
+            // Assume that if `limit` is 0, this means that storage is unlimited:
+            .unwrap_or(0)
     }
 }
 
