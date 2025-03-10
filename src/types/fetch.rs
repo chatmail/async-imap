@@ -205,12 +205,7 @@ impl Fetch {
                     _ => None,
                 })
                 .next()
-                .and_then(
-                    |date_time| match DateTime::parse_from_str(date_time, DATE_TIME_FORMAT) {
-                        Ok(date_time) => Some(date_time),
-                        Err(_) => None,
-                    },
-                )
+                .and_then(|date_time| DateTime::parse_from_str(date_time, DATE_TIME_FORMAT).ok())
         } else {
             unreachable!()
         }
