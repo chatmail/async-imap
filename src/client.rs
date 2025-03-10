@@ -2539,6 +2539,78 @@ mod tests {
 
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn test_get_quota_root() {
+        {
+            let response = b"* QUOTAROOT Sent Userquota\r\n\
+                    * QUOTA Userquota (STORAGE 4855 48576)\r\n\
+                    A0001 OK Getquotaroot completed (0.004 + 0.000 + 0.004 secs).\r\n"
+                .to_vec();
+
+            let mock_stream = MockStream::new(response);
+            let mut session = mock_session!(mock_stream);
+            let (quotaroots, quota) = dbg!(session.get_quota_root("Sent").await.unwrap());
+            assert_eq!(
+                str::from_utf8(&session.stream.inner.written_buf).unwrap(),
+                "A0001 GETQUOTAROOT \"Sent\"\r\n"
+            );
+            assert_eq!(
+                quotaroots,
+                vec![QuotaRoot {
+                    mailbox_name: "Sent".to_string(),
+                    quota_root_names: vec!["Userquota".to_string(),],
+                },],
+            );
+            assert_eq!(
+                quota,
+                vec![Quota {
+                    root_name: "Userquota".to_string(),
+                    resources: vec![QuotaResource {
+                        name: QuotaResourceName::Storage,
+                        usage: 4855,
+                        limit: 48576,
+                    }],
+                }]
+            );
+            assert_eq!(quota[0].resources[0].get_usage_percentage(), 9);
+        }
+
+        {
+            let response = b"* QUOTAROOT \"INBOX\" \"#19\"\r\n\
+                    * QUOTA \"#19\" (STORAGE 0 0)\r\n\
+                    A0001 OK GETQUOTAROOT successful.\r\n"
+                .to_vec();
+
+            let mock_stream = MockStream::new(response);
+            let mut session = mock_session!(mock_stream);
+            let (quotaroots, quota) = session.get_quota_root("INBOX").await.unwrap();
+            assert_eq!(
+                str::from_utf8(&session.stream.inner.written_buf).unwrap(),
+                "A0001 GETQUOTAROOT \"INBOX\"\r\n"
+            );
+            assert_eq!(
+                quotaroots,
+                vec![QuotaRoot {
+                    mailbox_name: "INBOX".to_string(),
+                    quota_root_names: vec!["#19".to_string(),],
+                },],
+            );
+            assert_eq!(
+                quota,
+                vec![Quota {
+                    root_name: "#19".to_string(),
+                    resources: vec![QuotaResource {
+                        name: QuotaResourceName::Storage,
+                        usage: 0,
+                        limit: 0,
+                    }],
+                }]
+            );
+            assert_eq!(quota[0].resources[0].get_usage_percentage(), 0);
+        }
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn test_parsing_error() {
         // Simulate someone connecting to SMTP server with IMAP client.
         let response = b"220 mail.example.org ESMTP Postcow\r\n".to_vec();
