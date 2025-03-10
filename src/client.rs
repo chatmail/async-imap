@@ -410,34 +410,34 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     ///  - `INTERNALDATE`: The internal date of the message.
     ///  - `BODY[<section>]`:
     ///
-    ///     The text of a particular body section.  The section specification is a set of zero or
-    ///     more part specifiers delimited by periods.  A part specifier is either a part number
-    ///     (see RFC) or one of the following: `HEADER`, `HEADER.FIELDS`, `HEADER.FIELDS.NOT`,
-    ///     `MIME`, and `TEXT`.  An empty section specification (i.e., `BODY[]`) refers to the
-    ///     entire message, including the header.
+    ///    The text of a particular body section.  The section specification is a set of zero or
+    ///    more part specifiers delimited by periods.  A part specifier is either a part number
+    ///    (see RFC) or one of the following: `HEADER`, `HEADER.FIELDS`, `HEADER.FIELDS.NOT`,
+    ///    `MIME`, and `TEXT`.  An empty section specification (i.e., `BODY[]`) refers to the
+    ///    entire message, including the header.
     ///
-    ///     The `HEADER`, `HEADER.FIELDS`, and `HEADER.FIELDS.NOT` part specifiers refer to the
-    ///     [RFC-2822](https://tools.ietf.org/html/rfc2822) header of the message or of an
-    ///     encapsulated [MIME-IMT](https://tools.ietf.org/html/rfc2046)
-    ///     MESSAGE/[RFC822](https://tools.ietf.org/html/rfc822) message. `HEADER.FIELDS` and
-    ///     `HEADER.FIELDS.NOT` are followed by a list of field-name (as defined in
-    ///     [RFC-2822](https://tools.ietf.org/html/rfc2822)) names, and return a subset of the
-    ///     header.  The subset returned by `HEADER.FIELDS` contains only those header fields with
-    ///     a field-name that matches one of the names in the list; similarly, the subset returned
-    ///     by `HEADER.FIELDS.NOT` contains only the header fields with a non-matching field-name.
-    ///     The field-matching is case-insensitive but otherwise exact.  Subsetting does not
-    ///     exclude the [RFC-2822](https://tools.ietf.org/html/rfc2822) delimiting blank line
-    ///     between the header and the body; the blank line is included in all header fetches,
-    ///     except in the case of a message which has no body and no blank line.
+    ///    The `HEADER`, `HEADER.FIELDS`, and `HEADER.FIELDS.NOT` part specifiers refer to the
+    ///    [RFC-2822](https://tools.ietf.org/html/rfc2822) header of the message or of an
+    ///    encapsulated [MIME-IMT](https://tools.ietf.org/html/rfc2046)
+    ///    MESSAGE/[RFC822](https://tools.ietf.org/html/rfc822) message. `HEADER.FIELDS` and
+    ///    `HEADER.FIELDS.NOT` are followed by a list of field-name (as defined in
+    ///    [RFC-2822](https://tools.ietf.org/html/rfc2822)) names, and return a subset of the
+    ///    header.  The subset returned by `HEADER.FIELDS` contains only those header fields with
+    ///    a field-name that matches one of the names in the list; similarly, the subset returned
+    ///    by `HEADER.FIELDS.NOT` contains only the header fields with a non-matching field-name.
+    ///    The field-matching is case-insensitive but otherwise exact.  Subsetting does not
+    ///    exclude the [RFC-2822](https://tools.ietf.org/html/rfc2822) delimiting blank line
+    ///    between the header and the body; the blank line is included in all header fetches,
+    ///    except in the case of a message which has no body and no blank line.
     ///
-    ///     The `MIME` part specifier refers to the [MIME-IMB](https://tools.ietf.org/html/rfc2045)
-    ///     header for this part.
+    ///    The `MIME` part specifier refers to the [MIME-IMB](https://tools.ietf.org/html/rfc2045)
+    ///    header for this part.
     ///
-    ///     The `TEXT` part specifier refers to the text body of the message,
-    ///     omitting the [RFC-2822](https://tools.ietf.org/html/rfc2822) header.
+    ///    The `TEXT` part specifier refers to the text body of the message,
+    ///    omitting the [RFC-2822](https://tools.ietf.org/html/rfc2822) header.
     ///
-    ///     [`Flag::Seen`] is implicitly set when `BODY` is fetched; if this causes the flags to
-    ///     change, they will generally be included as part of the `FETCH` responses.
+    ///    [`Flag::Seen`] is implicitly set when `BODY` is fetched; if this causes the flags to
+    ///    change, they will generally be included as part of the `FETCH` responses.
     ///  - `BODY.PEEK[<section>]`: An alternate form of `BODY[<section>]` that does not implicitly
     ///    set [`Flag::Seen`].
     ///  - `ENVELOPE`: The envelope structure of the message.  This is computed by the server by
