@@ -47,7 +47,7 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
 
         if let Some(tag) = msg.0 {
             self.inner.write_all(tag.as_bytes()).await?;
-            self.inner.write(b" ").await?;
+            self.inner.write_all(b" ").await?;
         }
         self.inner.write_all(&msg.1).await?;
         self.inner.write_all(b"\r\n").await?;
