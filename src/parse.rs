@@ -127,13 +127,10 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
                         )))
                     }
                     _ => {
-                        return Err(Error::Io(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "status: {:?}, code: {:?}, information: {:?}",
-                                status, code, information
-                            ),
-                        )));
+                        return Err(Error::Io(io::Error::other(format!(
+                            "status: {:?}, code: {:?}, information: {:?}",
+                            status, code, information
+                        ))));
                     }
                 }
             }
@@ -273,13 +270,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         )))
                     }
                     _ => {
-                        return Err(Error::Io(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "status: {:?}, code: {:?}, information: {:?}",
-                                status, code, information
-                            ),
-                        )));
+                        return Err(Error::Io(io::Error::other(format!(
+                            "status: {:?}, code: {:?}, information: {:?}",
+                            status, code, information
+                        ))));
                     }
                 }
             }
@@ -327,13 +321,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         )))
                     }
                     _ => {
-                        return Err(Error::Io(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "status: {:?}, code: {:?}, information: {:?}",
-                                status, code, information
-                            ),
-                        )));
+                        return Err(Error::Io(io::Error::other(format!(
+                            "status: {:?}, code: {:?}, information: {:?}",
+                            status, code, information
+                        ))));
                     }
                 }
             }

@@ -103,14 +103,11 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 }
                 Err(other) => {
                     self.decode_needs = 0;
-                    Err(Some(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "{:?} during parsing of {:?}",
-                            other,
-                            String::from_utf8_lossy(buf)
-                        ),
-                    )))
+                    Err(Some(io::Error::other(format!(
+                        "{:?} during parsing of {:?}",
+                        other,
+                        String::from_utf8_lossy(buf)
+                    ))))
                 }
             }
         });
@@ -204,10 +201,7 @@ impl Buffer {
             n => min_size + (Self::BLOCK_SIZE - n),
         };
         if new_size > Self::MAX_CAPACITY {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "incoming data too large",
-            ))
+            Err(io::Error::other("incoming data too large"))
         } else {
             self.block.resize(new_size, 0);
             Ok(())

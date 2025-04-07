@@ -1462,13 +1462,10 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
                 "code: {:?}, info: {:?}",
                 code, information
             ))),
-            _ => Err(Error::Io(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "status: {:?}, code: {:?}, information: {:?}",
-                    status, code, information
-                ),
-            ))),
+            _ => Err(Error::Io(io::Error::other(format!(
+                "status: {:?}, code: {:?}, information: {:?}",
+                status, code, information
+            )))),
         }
     }
 }
