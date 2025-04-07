@@ -1,6 +1,6 @@
 [package]
 name = "async-imap"
-version = "0.10.3"
+version = "0.10.4"
 authors = ["dignifiedquire <me@dignifiedquire.com>"]
 documentation = "https://docs.rs/async-imap/"
 repository = "https://github.com/async-email/async-imap"

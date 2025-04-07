@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2025-04-07
+
+- Remove unused `once_cell` dependency.
+- Update base64 from 0.21 to 0.22.1.
+- Use write_all() to write space after a tag.
+
 ## [0.10.3] - 2025-03-10
 
 - Don't panic if the server returns 0 as the quota limit. [#116](https://github.com/chatmail/async-imap/pull/116)
@@ -200,6 +206,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.1.0 - 2019-11-11
 
+[0.10.4]: https://github.com/async-email/async-imap/compare/v0.10.3...v0.10.4
+[0.10.3]: https://github.com/async-email/async-imap/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/async-email/async-imap/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/async-email/async-imap/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/async-email/async-imap/compare/v0.9.7...v0.10.0
