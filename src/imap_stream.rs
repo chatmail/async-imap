@@ -17,7 +17,6 @@ use crate::types::{Request, ResponseData};
 /// as imap client messages.
 #[derive(Debug)]
 pub struct ImapStream<R: Read + Write> {
-    // TODO: write some buffering logic
     /// The underlying stream
     pub(crate) inner: R,
     /// Number of bytes the next decode operation needs if known.
