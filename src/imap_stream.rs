@@ -412,13 +412,18 @@ mod tests {
             // Ask for `i` bytes.
             buf.ensure_capacity(i).unwrap();
 
-            // Test that we can read at least as much as requested.
+            // Test that we can read at least 1 byte.
             let free = buf.free_as_mut_slice();
             let used = free.len();
-            assert!(used >= i);
+            assert!(used > 0);
 
             // Use as much as allowed.
             buf.extend_used(used);
+
+            // Test that we can read at least as much as requested.
+            let block = buf.take_block();
+            assert!(block.len() >= i);
+            buf.return_block(block);
         }
     }
 
