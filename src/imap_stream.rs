@@ -173,8 +173,7 @@ impl Buffer {
     /// Ensure the buffer has free capacity, optionally ensuring minimum buffer size.
     fn ensure_capacity(&mut self, required: usize) -> io::Result<()> {
         let free_bytes: usize = self.block.len() - self.offset;
-        let min_required_bytes: usize = required;
-        let extra_bytes_needed: usize = min_required_bytes.saturating_sub(self.block.len());
+        let extra_bytes_needed: usize = required.saturating_sub(self.block.len());
         if free_bytes == 0 || extra_bytes_needed > 0 {
             let increase = std::cmp::max(Buffer::BLOCK_SIZE, extra_bytes_needed);
             self.grow(increase)?;
