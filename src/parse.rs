@@ -115,21 +115,14 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
                     }
                     Status::No => {
-                        return Err(Error::No(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {:?}, code: {:?}, information: {:?}",
-                            status, code, information
+                            "status: {status:?}, code: {code:?}, information: {information:?}"
                         ))));
                     }
                 }
@@ -258,21 +251,14 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
                     }
                     Status::No => {
-                        return Err(Error::No(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {:?}, code: {:?}, information: {:?}",
-                            status, code, information
+                            "status: {status:?}, code: {code:?}, information: {information:?}"
                         ))));
                     }
                 }
@@ -309,21 +295,14 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         }
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
                     }
                     Status::No => {
-                        return Err(Error::No(format!(
-                            "code: {:?}, info: {:?}",
-                            code, information
-                        )))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {:?}, code: {:?}, information: {:?}",
-                            status, code, information
+                            "status: {status:?}, code: {code:?}, information: {information:?}"
                         ))));
                     }
                 }

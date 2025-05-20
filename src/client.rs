@@ -188,7 +188,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
         let u = ok_or_unauth_client_err!(validate_str(username.as_ref()), self);
         let p = ok_or_unauth_client_err!(validate_str(password.as_ref()), self);
         ok_or_unauth_client_err!(
-            self.run_command_and_check_ok(&format!("LOGIN {} {}", u, p), None)
+            self.run_command_and_check_ok(&format!("LOGIN {u} {p}"), None)
                 .await,
             self
         );
@@ -1454,17 +1454,10 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
         use imap_proto::Status;
         match status {
             Status::Ok => Ok(()),
-            Status::Bad => Err(Error::Bad(format!(
-                "code: {:?}, info: {:?}",
-                code, information
-            ))),
-            Status::No => Err(Error::No(format!(
-                "code: {:?}, info: {:?}",
-                code, information
-            ))),
+            Status::Bad => Err(Error::Bad(format!("code: {code:?}, info: {information:?}"))),
+            Status::No => Err(Error::No(format!("code: {code:?}, info: {information:?}"))),
             _ => Err(Error::Io(io::Error::other(format!(
-                "status: {:?}, code: {:?}, information: {:?}",
-                status, code, information
+                "status: {status:?}, code: {code:?}, information: {information:?}"
             )))),
         }
     }
@@ -2155,7 +2148,7 @@ mod tests {
         K: 'a + Future<Output = Result<T>>,
     {
         let resp = res.as_bytes().to_vec();
-        let line = format!("A0001{}{} {} {}\r\n", prefix, cmd, seq, query);
+        let line = format!("A0001{prefix}{cmd} {seq} {query}\r\n");
         let session = Arc::new(Mutex::new(mock_session!(MockStream::new(resp))));
 
         {
@@ -2193,7 +2186,7 @@ mod tests {
                     return;
                 }
             }
-            panic!("Wrong error: {:?}", e);
+            panic!("Wrong error: {e:?}");
         }
         panic!("No error");
     }
@@ -2207,7 +2200,7 @@ mod tests {
                     return;
                 }
             }
-            panic!("Wrong error: {:?}", e);
+            panic!("Wrong error: {e:?}");
         }
         panic!("No error");
     }

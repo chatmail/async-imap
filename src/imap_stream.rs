@@ -91,7 +91,7 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                     Ok(response)
                 }
                 Err(nom::Err::Incomplete(Needed::Size(min))) => {
-                    log::trace!("decode: incomplete data, need minimum {} bytes", min);
+                    log::trace!("decode: incomplete data, need minimum {min} bytes");
                     self.decode_needs = self.buffer.used() + usize::from(min);
                     Err(None)
                 }
