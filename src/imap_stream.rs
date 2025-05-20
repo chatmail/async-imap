@@ -181,6 +181,9 @@ impl Buffer {
 
         // Assert that the buffer at least one free byte.
         debug_assert!(self.offset < self.block.len());
+
+        // Assert that the buffer has at least the required capacity.
+        debug_assert!(self.block.len() >= required);
         Ok(())
     }
 
