@@ -1360,6 +1360,16 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
 impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     unsafe_pinned!(stream: ImapStream<T>);
 
+    /// Gets a reference to the underlying stream.
+    pub fn get_ref(&self) -> &T {
+        self.stream.get_ref()
+    }
+
+    /// Gets a mutable reference to the underlying stream.
+    pub fn get_mut(&mut self) -> &mut T {
+        self.stream.get_mut()
+    }
+
     /// Convert this connection into the raw underlying stream.
     pub fn into_inner(self) -> T {
         let Self { stream, .. } = self;
