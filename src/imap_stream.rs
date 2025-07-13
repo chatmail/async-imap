@@ -54,6 +54,17 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
         Ok(())
     }
 
+    /// Gets a reference to the underlying stream.
+    pub fn get_ref(&self) -> &R {
+        &self.inner
+    }
+
+    /// Gets a mutable reference to the underlying stream.
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.inner
+    }
+
+    /// Returns underlying stream.
     pub fn into_inner(self) -> R {
         self.inner
     }
