@@ -99,8 +99,7 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
 ) -> Result<Mailbox> {
     let mut mbox = Mailbox::default();
 
-    while let Some(resp) = stream.next().await {
-        let resp = resp?;
+    while let Some(resp) = stream.try_next().await? {
         match resp.parsed() {
             Response::Done {
                 tag,
@@ -192,10 +191,9 @@ pub(crate) async fn parse_capabilities<T: Stream<Item = io::Result<ResponseData>
 
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             Response::Capabilities(cs) => {
                 for c in cs {
@@ -218,10 +216,9 @@ pub(crate) async fn parse_noop<T: Stream<Item = io::Result<ResponseData>> + Unpi
 ) -> Result<()> {
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         handle_unilateral(resp, unsolicited.clone());
     }
 
@@ -235,8 +232,7 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
 ) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
-    while let Some(resp) = stream.next().await {
-        let resp = resp?;
+    while let Some(resp) = stream.try_next().await? {
         match resp.parsed() {
             Response::Done {
                 tag,
@@ -345,10 +341,9 @@ pub(crate) async fn parse_ids<T: Stream<Item = io::Result<ResponseData>> + Unpin
 
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             Response::MailboxData(MailboxDatum::Search(cs)) => {
                 for c in cs {
@@ -374,10 +369,9 @@ pub(crate) async fn parse_metadata<T: Stream<Item = io::Result<ResponseData>> + 
     let mut res_values = Vec::new();
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             // METADATA Response with Values
             // <https://datatracker.ietf.org/doc/html/rfc5464.html#section-4.4.1>
