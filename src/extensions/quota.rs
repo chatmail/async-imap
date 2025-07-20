@@ -23,10 +23,9 @@ pub(crate) async fn parse_get_quota<T: Stream<Item = io::Result<ResponseData>> +
     let mut quota = None;
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             Response::Quota(q) => quota = Some(q.clone().into()),
             _ => {
@@ -53,10 +52,9 @@ pub(crate) async fn parse_get_quota_root<T: Stream<Item = io::Result<ResponseDat
 
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             Response::QuotaRoot(qr) => {
                 roots.push(qr.clone().into());

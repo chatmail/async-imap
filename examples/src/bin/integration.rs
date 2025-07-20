@@ -31,7 +31,7 @@ async fn session(user: &str) -> Result<Session<async_native_tls::TlsStream<TcpSt
     let mut client = async_imap::Client::new(tls_stream);
     let _greeting = client
         .read_response()
-        .await
+        .await?
         .context("unexpected end of stream, expected greeting")?;
 
     let session = client
@@ -48,7 +48,7 @@ async fn _connect_insecure_then_secure() -> Result<()> {
     let mut client = async_imap::Client::new(tcp_stream);
     let _greeting = client
         .read_response()
-        .await
+        .await?
         .context("unexpected end of stream, expected greeting")?;
     client.run_command_and_check_ok("STARTTLS", None).await?;
     let stream = client.into_inner();

@@ -182,8 +182,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
     pub async fn init(&mut self) -> Result<()> {
         let id = self.session.run_command("IDLE").await?;
         self.id = Some(id);
-        while let Some(res) = self.session.stream.next().await {
-            let res = res?;
+        while let Some(res) = self.session.stream.try_next().await? {
             match res.parsed() {
                 Response::Continue { .. } => {
                     return Ok(());

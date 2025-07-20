@@ -43,10 +43,9 @@ pub(crate) async fn parse_id<T: Stream<Item = io::Result<ResponseData>> + Unpin>
     let mut id = None;
     while let Some(resp) = stream
         .take_while(|res| filter(res, &command_tag))
-        .next()
-        .await
+        .try_next()
+        .await?
     {
-        let resp = resp?;
         match resp.parsed() {
             Response::Id(res) => {
                 id = res.as_ref().map(|m| {
