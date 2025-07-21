@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2025-07-21
+
+- Breaking change: `read_response()` returns `Result<Option<_>>` instead of `Option<Result<_>>`.
+- Add `get_ref()` and `get_mut()` APIs to get references to underlying stream.
+
 ## [0.10.4] - 2025-04-07
 
 - Remove unused `once_cell` dependency.
@@ -206,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.1.0 - 2019-11-11
 
+[0.11.0]: https://github.com/async-email/async-imap/compare/v0.10.4...v0.11.0
 [0.10.4]: https://github.com/async-email/async-imap/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/async-email/async-imap/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/async-email/async-imap/compare/v0.10.1...v0.10.2
