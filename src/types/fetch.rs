@@ -251,7 +251,7 @@ impl Fetch {
 
     /// Extract the `X-GM-MSGID` of a `FETCH` response
     ///
-    /// See [Access to the Gmail unique message ID: X-GM-MSGID](https://developers.google.com/workspace/gmail/imap/imap-extensions#access_to_labels_x-gm-labels)
+    /// See [Access to the Gmail unique message ID: X-GM-MSGID](https://developers.google.com/workspace/gmail/imap/imap-extensions#access_to_the_unique_message_id_x-gm-msgid)
     /// for details.
     pub fn gmail_msg_id(&self) -> Option<&u64> {
         if let Response::Fetch(_, attrs) = self.response.parsed() {
