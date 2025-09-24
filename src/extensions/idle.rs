@@ -120,7 +120,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
         impl Future<Output = Result<IdleResponse>> + '_,
         stop_token::StopSource,
     ) {
-        self.wait_with_timeout(Duration::from_secs(24 * 60 * 60))
+        self.wait_with_timeout(Duration::from_secs(29 * 60))
     }
 
     /// Start listening to the server side responses.
