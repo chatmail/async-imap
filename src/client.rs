@@ -594,8 +594,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     pub async fn rename<S1: AsRef<str>, S2: AsRef<str>>(&mut self, from: S1, to: S2) -> Result<()> {
         self.run_command_and_check_ok(&format!(
             "RENAME {} {}",
-            quote!(from.as_ref()),
-            quote!(to.as_ref())
+            validate_str(from.as_ref())?,
+            validate_str(to.as_ref())?
         ))
         .await?;
 
@@ -611,7 +611,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     /// However, it will not unilaterally remove an existing mailbox name from the subscription
     /// list even if a mailbox by that name no longer exists.
     pub async fn subscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
-        self.run_command_and_check_ok(&format!("SUBSCRIBE {}", quote!(mailbox.as_ref())))
+        self.run_command_and_check_ok(&format!("SUBSCRIBE {}", validate_str(mailbox.as_ref())?))
             .await?;
         Ok(())
     }
@@ -621,7 +621,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     /// returned by [`Session::lsub`].  This command returns `Ok` only if the unsubscription is
     /// successful.
     pub async fn unsubscribe<S: AsRef<str>>(&mut self, mailbox: S) -> Result<()> {
-        self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", quote!(mailbox.as_ref())))
+        self.run_command_and_check_ok(&format!("UNSUBSCRIBE {}", validate_str(mailbox.as_ref())?))
             .await?;
         Ok(())
     }
@@ -839,7 +839,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         self.run_command_and_check_ok(&format!(
             "COPY {} {}",
             sequence_set.as_ref(),
-            mailbox_name.as_ref()
+            validate_str(mailbox_name.as_ref())?
         ))
         .await?;
 
@@ -856,7 +856,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         self.run_command_and_check_ok(&format!(
             "UID COPY {} {}",
             uid_set.as_ref(),
-            mailbox_name.as_ref()
+            validate_str(mailbox_name.as_ref())?
         ))
         .await?;
 
@@ -966,7 +966,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         let id = self
             .run_command(&format!(
                 "LIST {} {}",
-                quote!(reference_name.unwrap_or("")),
+                validate_str(reference_name.unwrap_or(""))?,
                 mailbox_pattern.unwrap_or("\"\"")
             ))
             .await?;
@@ -1002,8 +1002,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         let id = self
             .run_command(&format!(
                 "LSUB {} {}",
-                quote!(reference_name.unwrap_or("")),
-                mailbox_pattern.unwrap_or("")
+                validate_str(reference_name.unwrap_or(""))?,
+                validate_str(mailbox_pattern.unwrap_or(""))?
             ))
             .await?;
         let names = parse_names(
@@ -1122,8 +1122,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         let content = content.as_ref();
         let id = self
             .run_command(&format!(
-                "APPEND \"{}\"{}{}{}{} {{{}}}",
-                mailbox.as_ref(),
+                "APPEND {}{}{}{}{} {{{}}}",
+                validate_str(mailbox.as_ref())?,
                 if flags.is_some() { " " } else { "" },
                 flags.unwrap_or(""),
                 if internaldate.is_some() { " " } else { "" },
@@ -1226,7 +1226,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     /// The [`GETQUOTA` command](https://tools.ietf.org/html/rfc2087#section-4.2)
     pub async fn get_quota(&mut self, quota_root: &str) -> Result<Quota> {
         let id = self
-            .run_command(format!("GETQUOTA {}", quote!(quota_root)))
+            .run_command(format!("GETQUOTA {}", validate_str(quota_root)?))
             .await?;
         let c = parse_get_quota(
             &mut self.conn.stream,
@@ -1243,7 +1243,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         mailbox_name: &str,
     ) -> Result<(Vec<QuotaRoot>, Vec<Quota>)> {
         let id = self
-            .run_command(format!("GETQUOTAROOT {}", quote!(mailbox_name)))
+            .run_command(format!("GETQUOTAROOT {}", validate_str(mailbox_name)?))
             .await?;
         let c = parse_get_quota_root(
             &mut self.conn.stream,
@@ -1269,7 +1269,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         let id = self
             .run_command(format!(
                 "GETMETADATA {} {}{}",
-                quote!(mailbox_name),
+                validate_str(mailbox_name)?,
                 options,
                 entry_specifier
             ))
