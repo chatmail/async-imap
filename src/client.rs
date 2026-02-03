@@ -2014,15 +2014,19 @@ mod tests {
         F: 'a + FnOnce(Arc<Mutex<Session<MockStream>>>, &'a str, &'a str) -> K,
         K: 'a + Future<Output = Result<T>>,
     {
-        generic_with_uid(
-            "A0001 OK COPY completed\r\n",
-            "COPY",
-            "2:4",
-            "MEETING",
-            prefix,
-            op,
-        )
-        .await;
+        let resp = "A0001 OK COPY completed\r\n".as_bytes().to_vec();
+        let seq = "2:4";
+        let query = "MEETING";
+        let line = format!("A0001{prefix}COPY {seq} {}\r\n", quote!(query));
+        let session = Arc::new(Mutex::new(mock_session!(MockStream::new(resp))));
+
+        {
+            let _ = op(session.clone(), seq, query).await.unwrap();
+        }
+        assert!(
+            session.lock().await.stream.inner.written_buf == line.as_bytes().to_vec(),
+            "Invalid command"
+        );
     }
 
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
