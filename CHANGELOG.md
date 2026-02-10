@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-02-10
+
+- Expose gmail labels and msg id (#124)
+- `crate::extensions::idle::Handle::wait()` uses a 29 minute timeout instead of 24 hours
+- Add quotes for some commands (e.g. `COPY`) to support mailbox with whitespace (#127)
+
 ## [0.11.1] - 2025-08-04
 
 - Close IMAP stream after an error.
@@ -215,30 +221,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.1.0 - 2019-11-11
 
-[0.11.1]: https://github.com/async-email/async-imap/compare/v0.11.0...v0.11.1
-[0.11.0]: https://github.com/async-email/async-imap/compare/v0.10.4...v0.11.0
-[0.10.4]: https://github.com/async-email/async-imap/compare/v0.10.3...v0.10.4
-[0.10.3]: https://github.com/async-email/async-imap/compare/v0.10.2...v0.10.3
-[0.10.2]: https://github.com/async-email/async-imap/compare/v0.10.1...v0.10.2
-[0.10.1]: https://github.com/async-email/async-imap/compare/v0.10.0...v0.10.1
-[0.10.0]: https://github.com/async-email/async-imap/compare/v0.9.7...v0.10.0
-[0.9.7]: https://github.com/async-email/async-imap/compare/v0.9.6...v0.9.7
-[0.9.6]: https://github.com/async-email/async-imap/compare/v0.9.5...v0.9.6
-[0.9.5]: https://github.com/async-email/async-imap/compare/v0.9.4...v0.9.5
-[0.9.4]: https://github.com/async-email/async-imap/compare/v0.9.3...v0.9.4
-[0.9.3]: https://github.com/async-email/async-imap/compare/v0.9.2...v0.9.3
-[0.9.2]: https://github.com/async-email/async-imap/compare/v0.9.1...v0.9.2
-[0.9.1]: https://github.com/async-email/async-imap/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/async-email/async-imap/compare/v0.8.0...v0.9.0
-[0.8.0]: https://github.com/async-email/async-imap/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/async-email/async-imap/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/async-email/async-imap/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/async-email/async-imap/compare/v0.4.1...v0.5.0
-[0.4.1]: https://github.com/async-email/async-imap/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/async-email/async-imap/compare/v0.3.3...v0.4.0
-[0.3.3]: https://github.com/async-email/async-imap/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/async-email/async-imap/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/async-email/async-imap/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/async-email/async-imap/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/async-email/async-imap/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/async-email/async-imap/compare/v0.1.0...v0.1.1
+[0.11.2]: https://github.com/chatmail/async-imap/compare/v0.11.1...v0.11.2
+[0.11.1]: https://github.com/chatmail/async-imap/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/chatmail/async-imap/compare/v0.10.4...v0.11.0
+[0.10.4]: https://github.com/chatmail/async-imap/compare/v0.10.3...v0.10.4
+[0.10.3]: https://github.com/chatmail/async-imap/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/chatmail/async-imap/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/chatmail/async-imap/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/chatmail/async-imap/compare/v0.9.7...v0.10.0
+[0.9.7]: https://github.com/chatmail/async-imap/compare/v0.9.6...v0.9.7
+[0.9.6]: https://github.com/chatmail/async-imap/compare/v0.9.5...v0.9.6
+[0.9.5]: https://github.com/chatmail/async-imap/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/chatmail/async-imap/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/chatmail/async-imap/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/chatmail/async-imap/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/chatmail/async-imap/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/chatmail/async-imap/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/chatmail/async-imap/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/chatmail/async-imap/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/chatmail/async-imap/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/chatmail/async-imap/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/chatmail/async-imap/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/chatmail/async-imap/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/chatmail/async-imap/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/chatmail/async-imap/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/chatmail/async-imap/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/chatmail/async-imap/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/chatmail/async-imap/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/chatmail/async-imap/compare/v0.1.0...v0.1.1
