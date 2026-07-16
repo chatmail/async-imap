@@ -181,19 +181,61 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
     /// # }) }
     /// ```
     pub async fn login<U: AsRef<str>, P: AsRef<str>>(
-        mut self,
+        self,
         username: U,
         password: P,
     ) -> ::std::result::Result<Session<T>, (Error, Client<T>)> {
+        let (session, _capabilities) = self.login_with_capabilities(username, password).await?;
+        Ok(session)
+    }
+
+    /// Logs in to the IMAP server.
+    ///
+    /// Upon sucess returns a [`Session`] instance
+    /// and optional capabilities if
+    /// the response contained `CAPABILITY` response code.
+    pub async fn login_with_capabilities<U: AsRef<str>, P: AsRef<str>>(
+        mut self,
+        username: U,
+        password: P,
+    ) -> ::std::result::Result<(Session<T>, Option<Capabilities>), (Error, Client<T>)> {
         let u = ok_or_unauth_client_err!(validate_str(username.as_ref()), self);
         let p = ok_or_unauth_client_err!(validate_str(password.as_ref()), self);
-        ok_or_unauth_client_err!(
-            self.run_command_and_check_ok(&format!("LOGIN {u} {p}"), None)
-                .await,
-            self
-        );
 
-        Ok(Session::new(self.conn))
+        let id = ok_or_unauth_client_err!(self.run_command(&format!("LOGIN {u} {p}")).await, self);
+        loop {
+            let Some(res) = ok_or_unauth_client_err!(self.stream.try_next().await, self) else {
+                return Err((Error::ConnectionLost, self));
+            };
+
+            if let Response::Done {
+                status,
+                code,
+                information,
+                tag,
+            } = res.parsed()
+            {
+                ok_or_unauth_client_err!(
+                    self.check_status_ok(status, code.as_ref(), information.as_deref()),
+                    self
+                );
+
+                if *tag == id {
+                    let capabilities =
+                        if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) =
+                            code
+                        {
+                            use crate::types::{Capabilities, Capability};
+                            let capability_set: HashSet<Capability> =
+                                capabilities.iter().map(Capability::from).collect();
+                            Some(Capabilities(capability_set))
+                        } else {
+                            None
+                        };
+                    return Ok((Session::new(self.conn), capabilities));
+                }
+            }
+        }
     }
 
     /// Authenticate with the server using the given custom `authenticator` to handle the server's
@@ -1609,6 +1651,59 @@ mod tests {
                 command.as_bytes().to_vec(),
                 "Invalid login command"
             );
+        } else {
+            unreachable!("invalid login");
+        }
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_with_capabilities() {
+        let response = b"A0001 OK [CAPABILITY IMAP4rev1 IDLE MOVE] Logged in\r\n".to_vec();
+        let username = "username";
+        let password = "password";
+        let command = format!("A0001 LOGIN {} {}\r\n", quote!(username), quote!(password));
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        if let Ok((session, capabilities)) =
+            client.login_with_capabilities(username, password).await
+        {
+            assert_eq!(
+                session.stream.inner.written_buf,
+                command.as_bytes().to_vec(),
+                "Invalid login command"
+            );
+            let capabilities = capabilities.expect("Capabilities should not be None");
+            assert_eq!(capabilities.len(), 3);
+            assert!(capabilities.has(&Capability::Imap4rev1));
+            assert!(capabilities.has(&Capability::Atom("IDLE".to_string())));
+            assert!(capabilities.has(&Capability::Atom("MOVE".to_string())));
+            assert!(!capabilities.has(&Capability::Atom("ID".to_string())));
+        } else {
+            unreachable!("invalid login");
+        }
+    }
+
+    /// Tests that `login_with_capabilities()` returns None
+    /// if no capabilities are in the response to the LOGIN command.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_without_capabilities() {
+        let response = b"A0001 OK Logged in\r\n".to_vec();
+        let username = "username";
+        let password = "password";
+        let command = format!("A0001 LOGIN {} {}\r\n", quote!(username), quote!(password));
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        if let Ok((session, capabilities)) =
+            client.login_with_capabilities(username, password).await
+        {
+            assert_eq!(
+                session.stream.inner.written_buf,
+                command.as_bytes().to_vec(),
+                "Invalid login command"
+            );
+            assert!(capabilities.is_none());
         } else {
             unreachable!("invalid login");
         }
