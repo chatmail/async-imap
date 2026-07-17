@@ -193,14 +193,14 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
                     information,
                     ..
                 } => {
-                    if tag == self.id.as_ref().unwrap() {
-                        if let Status::Bad = status {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::ConnectionRefused,
-                                information.as_ref().unwrap().to_string(),
-                            )
-                            .into());
-                        }
+                    if tag == self.id.as_ref().unwrap()
+                        && let Status::Bad = status
+                    {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::ConnectionRefused,
+                            information.as_ref().unwrap().to_string(),
+                        )
+                        .into());
                     }
                     handle_unilateral(res, self.session.unsolicited_responses_tx.clone());
                 }

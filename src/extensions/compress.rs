@@ -6,11 +6,11 @@ use std::task::{Context, Poll};
 
 use pin_project::pin_project;
 
+use crate::Connection;
 use crate::client::Session;
 use crate::error::Result;
 use crate::imap_stream::ImapStream;
 use crate::types::IdGenerator;
-use crate::Connection;
 
 #[cfg(feature = "runtime-async-std")]
 use async_std::io::{IoSlice, IoSliceMut, Read, Write};

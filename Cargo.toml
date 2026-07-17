@@ -8,7 +8,7 @@ homepage = "https://github.com/async-email/async-imap"
 description = "Async IMAP client for Rust"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.88"
 
 keywords = ["email", "imap"]

@@ -1,6 +1,6 @@
 use imap_proto::types::Capability as CapabilityRef;
-use std::collections::hash_set::Iter;
 use std::collections::HashSet;
+use std::collections::hash_set::Iter;
 
 const IMAP4REV1_CAPABILITY: &str = "IMAP4rev1";
 const AUTH_CAPABILITY_PREFIX: &str = "AUTH=";

@@ -33,7 +33,7 @@ impl fmt::Debug for ResponseData {
 impl ResponseData {
     pub fn request_id(&self) -> Option<&RequestId> {
         match self.borrow_dependent() {
-            Response::Done { ref tag, .. } => Some(tag),
+            Response::Done { tag, .. } => Some(tag),
             _ => None,
         }
     }

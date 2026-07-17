@@ -44,7 +44,7 @@ pub(crate) fn parse_names<T: Stream<Item = io::Result<ResponseData>> + Unpin + S
 pub(crate) fn filter(
     res: &io::Result<ResponseData>,
     command_tag: &RequestId,
-) -> impl Future<Output = bool> {
+) -> impl Future<Output = bool> + use<> {
     let val = filter_sync(res, command_tag);
     futures::future::ready(val)
 }
@@ -114,10 +114,10 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -247,10 +247,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -291,10 +291,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         }
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")))
+                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -687,9 +687,9 @@ mod tests {
     async fn parse_ids_test() {
         let (send, recv) = bounded(10);
         let responses = input_stream(&[
-                "* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334\r\n",
-                "* SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n",
-            ]);
+            "* SEARCH 1600 1698 1739 1781 1795 1885 1891 1892 1893 1898 1899 1901 1911 1926 1932 1933 1993 1994 2007 2032 2033 2041 2053 2062 2063 2065 2066 2072 2078 2079 2082 2084 2095 2100 2101 2102 2103 2104 2107 2116 2120 2135 2138 2154 2163 2168 2172 2189 2193 2198 2199 2205 2212 2213 2221 2227 2267 2275 2276 2295 2300 2328 2330 2332 2333 2334\r\n",
+            "* SEARCH 2335 2336 2337 2338 2339 2341 2342 2347 2349 2350 2358 2359 2362 2369 2371 2372 2373 2374 2375 2376 2377 2378 2379 2380 2381 2382 2383 2384 2385 2386 2390 2392 2397 2400 2401 2403 2405 2409 2411 2414 2417 2419 2420 2424 2426 2428 2439 2454 2456 2467 2468 2469 2490 2515 2519 2520 2521\r\n",
+        ]);
         let mut stream = async_std::stream::from_iter(responses);
 
         let id = RequestId("A0001".into());

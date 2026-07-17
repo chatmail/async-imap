@@ -10,7 +10,7 @@ use async_std::io::{Read, Write, WriteExt};
 use base64::Engine as _;
 use extensions::id::{format_identification, parse_id};
 use extensions::quota::parse_get_quota_root;
-use futures::{io, Stream, TryStreamExt};
+use futures::{Stream, TryStreamExt, io};
 use imap_proto::{Metadata, RequestId, Response};
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
@@ -1004,7 +1004,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         &mut self,
         reference_name: Option<&str>,
         mailbox_pattern: Option<&str>,
-    ) -> Result<impl Stream<Item = Result<Name>> + '_ + Send> {
+    ) -> Result<impl Stream<Item = Result<Name>> + '_ + Send + use<'_, T>> {
         let id = self
             .run_command(&format!(
                 "LIST {} {}",
@@ -1040,7 +1040,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         &mut self,
         reference_name: Option<&str>,
         mailbox_pattern: Option<&str>,
-    ) -> Result<impl Stream<Item = Result<Name>> + '_ + Send> {
+    ) -> Result<impl Stream<Item = Result<Name>> + '_ + Send + use<'_, T>> {
         let id = self
             .run_command(&format!(
                 "LSUB {} {}",
@@ -1450,10 +1450,9 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
         id: &RequestId,
         unsolicited: Option<channel::Sender<UnsolicitedResponse>>,
     ) -> Result<()> {
-        if let Some(first_res) = self.stream.try_next().await? {
-            self.check_done_ok_from(id, unsolicited, first_res).await
-        } else {
-            Err(Error::ConnectionLost)
+        match self.stream.try_next().await? {
+            Some(first_res) => self.check_done_ok_from(id, unsolicited, first_res).await,
+            _ => Err(Error::ConnectionLost),
         }
     }
 
@@ -1645,14 +1644,17 @@ mod tests {
         let command = format!("A0001 LOGIN {} {}\r\n", quote!(username), quote!(password));
         let mock_stream = MockStream::new(response);
         let client = mock_client!(mock_stream);
-        if let Ok(session) = client.login(username, password).await {
-            assert_eq!(
-                session.stream.inner.written_buf,
-                command.as_bytes().to_vec(),
-                "Invalid login command"
-            );
-        } else {
-            unreachable!("invalid login");
+        match client.login(username, password).await {
+            Ok(session) => {
+                assert_eq!(
+                    session.stream.inner.written_buf,
+                    command.as_bytes().to_vec(),
+                    "Invalid login command"
+                );
+            }
+            _ => {
+                unreachable!("invalid login");
+            }
         }
     }
 
@@ -2283,7 +2285,7 @@ mod tests {
     #[test]
     fn validate_newline() {
         if let Err(ref e) = validate_str("test\nstring") {
-            if let Error::Validate(ref ve) = e {
+            if let Error::Validate(ve) = e {
                 if ve.0 == '\n' {
                     return;
                 }
@@ -2297,7 +2299,7 @@ mod tests {
     #[allow(unreachable_patterns)]
     fn validate_carriage_return() {
         if let Err(ref e) = validate_str("test\rstring") {
-            if let Error::Validate(ref ve) = e {
+            if let Error::Validate(ve) = e {
                 if ve.0 == '\r' {
                     return;
                 }
@@ -2344,7 +2346,9 @@ mod tests {
             }
             let body_len = body.len();
 
-            let response = format!("* {id} FETCH (RFC822.SIZE {body_len} BODY[] {{{body_len}}}\r\n{body} FLAGS (\\Seen))\r\n");
+            let response = format!(
+                "* {id} FETCH (RFC822.SIZE {body_len} BODY[] {{{body_len}}}\r\n{body} FLAGS (\\Seen))\r\n"
+            );
             writer.write_all(response.as_bytes()).await?;
             writer
                 .write_all(format!("{request_id} OK FETCH completed\r\n").as_bytes())
@@ -2709,12 +2713,14 @@ mod tests {
         let command = "A0001 NOOP\r\n";
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        assert!(session
-            .noop()
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("220 mail.example.org ESMTP Postcow"));
+        assert!(
+            session
+                .noop()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("220 mail.example.org ESMTP Postcow")
+        );
         assert!(
             session.stream.inner.written_buf == command.as_bytes().to_vec(),
             "Invalid NOOP command"
