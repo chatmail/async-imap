@@ -570,6 +570,28 @@ mod tests {
 
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn parse_fetches_gmail_thread_id() {
+        let (send, recv) = bounded(10);
+        let responses = input_stream(&[
+            "* 24 FETCH (FLAGS (\\Seen) UID 4827943 X-GM-THRID 1278455344230334865)\r\n",
+            "* 25 FETCH (FLAGS (\\Seen))\r\n",
+        ]);
+        let mut stream = async_std::stream::from_iter(responses);
+        let id = RequestId("a".into());
+
+        let fetches = parse_fetches(&mut stream, send, id)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert!(recv.is_empty());
+
+        assert_eq!(fetches.len(), 2);
+        assert_eq!(fetches[0].gmail_thread_id(), Some(&1278455344230334865));
+        assert_eq!(fetches[1].gmail_thread_id(), None);
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn parse_fetches_w_unilateral() {
         // https://github.com/mattnenterprise/rust-imap/issues/81
         let (send, recv) = bounded(10);
