@@ -37,6 +37,15 @@ async fn main() -> Result<()> {
     let tls_stream = tls.connect(domain, tcp_stream).await?;
     let client = async_imap::Client::new(tls_stream);
 
+    // Gmail's IMAP server will send a server greeting before taking in any message
+    // Here, we forcefully wait and read a line before sending authentication data
+    //
+    // See #84
+    let _greeting = client
+        .read_response()
+        .await?
+        .expect("unexpected end of stream, expected greeting");
+
     let mut imap_session = match client.authenticate("XOAUTH2", &gmail_auth).await {
         Ok(c) => c,
         Err((e, _unauth_client)) => {
