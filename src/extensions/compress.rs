@@ -15,7 +15,7 @@ use crate::types::IdGenerator;
 #[cfg(feature = "runtime-async-std")]
 use async_std::io::{IoSlice, IoSliceMut, Read, Write};
 #[cfg(feature = "runtime-async-std")]
-use futures::io::BufReader;
+use futures_util::io::BufReader;
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, BufReader, ReadBuf};
 

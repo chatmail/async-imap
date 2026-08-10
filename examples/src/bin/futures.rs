@@ -1,7 +1,7 @@
 use std::env;
 
 use anyhow::{bail, Result};
-use futures::TryStreamExt;
+use futures_util::TryStreamExt;
 
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
@@ -9,7 +9,7 @@ use async_std::net::TcpStream;
 use tokio::net::TcpStream;
 
 fn main() -> Result<()> {
-    futures::executor::block_on(async {
+    futures_executor::block_on(async {
         let args: Vec<String> = env::args().collect();
         if args.len() != 4 {
             eprintln!("need three arguments: imap-server login password");

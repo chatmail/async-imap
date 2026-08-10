@@ -10,7 +10,7 @@ use async_std::io::{Read, Write, WriteExt};
 use base64::Engine as _;
 use extensions::id::{format_identification, parse_id};
 use extensions::quota::parse_get_quota_root;
-use futures::{Stream, TryStreamExt, io};
+use futures_util::{Stream, TryStreamExt, io};
 use imap_proto::{Metadata, RequestId, Response};
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
@@ -807,7 +807,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     /// use async_std::net::TcpStream;
     /// #[cfg(feature = "runtime-tokio")]
     /// use tokio::net::TcpStream;
-    /// use futures::TryStreamExt;
+    /// use futures_util::TryStreamExt;
     ///
     /// async fn delete(seq: Seq, s: &mut Session<TcpStream>) -> Result<()> {
     ///     let updates_stream = s.store(format!("{}", seq), "+FLAGS (\\Deleted)").await?;
@@ -1528,7 +1528,7 @@ mod tests {
     use std::future::Future;
 
     use async_std::sync::{Arc, Mutex};
-    use futures::StreamExt;
+    use futures_util::StreamExt;
     use imap_proto::Status;
 
     macro_rules! mock_client {
@@ -2371,7 +2371,7 @@ mod tests {
         tokio::test(flavor = "multi_thread", worker_threads = 2)
     )]
     async fn large_fetch() -> Result<()> {
-        use futures::TryStreamExt;
+        use futures_util::TryStreamExt;
 
         let (client, server) = tokio::io::duplex(4096);
         tokio::spawn(handle_client(server));

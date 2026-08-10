@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
 use async_channel as channel;
-use futures::io;
-use futures::prelude::*;
-use futures::stream::Stream;
+use futures_util::stream::Stream;
+use futures_util::{StreamExt as _, TryStreamExt as _, io};
 use imap_proto::{self, MailboxDatum, Metadata, RequestId, Response};
 
 use crate::error::{Error, Result};
@@ -15,7 +14,7 @@ pub(crate) fn parse_names<T: Stream<Item = io::Result<ResponseData>> + Unpin + S
     unsolicited: channel::Sender<UnsolicitedResponse>,
     command_tag: RequestId,
 ) -> impl Stream<Item = Result<Name>> + '_ + Send + Unpin {
-    use futures::{FutureExt, StreamExt};
+    use futures_util::{FutureExt, StreamExt};
 
     StreamExt::filter_map(
         StreamExt::take_while(stream, move |res| filter(res, &command_tag)),
@@ -46,7 +45,7 @@ pub(crate) fn filter(
     command_tag: &RequestId,
 ) -> impl Future<Output = bool> + use<> {
     let val = filter_sync(res, command_tag);
-    futures::future::ready(val)
+    futures_util::future::ready(val)
 }
 
 pub(crate) fn filter_sync(res: &io::Result<ResponseData>, command_tag: &RequestId) -> bool {
@@ -67,7 +66,7 @@ pub(crate) fn parse_fetches<T: Stream<Item = io::Result<ResponseData>> + Unpin +
     unsolicited: channel::Sender<UnsolicitedResponse>,
     command_tag: RequestId,
 ) -> impl Stream<Item = Result<Fetch>> + '_ + Send + Unpin {
-    use futures::{FutureExt, StreamExt};
+    use futures_util::{FutureExt, StreamExt};
 
     StreamExt::filter_map(
         StreamExt::take_while(stream, move |res| filter(res, &command_tag)),
@@ -159,7 +158,7 @@ pub(crate) fn parse_expunge<T: Stream<Item = io::Result<ResponseData>> + Unpin +
     unsolicited: channel::Sender<UnsolicitedResponse>,
     command_tag: RequestId,
 ) -> impl Stream<Item = Result<u32>> + '_ + Send {
-    use futures::StreamExt;
+    use futures_util::StreamExt;
 
     StreamExt::filter_map(
         StreamExt::take_while(stream, move |res| filter(res, &command_tag)),

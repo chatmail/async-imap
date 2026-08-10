@@ -1,5 +1,5 @@
 use anyhow::Result;
-use futures::StreamExt;
+use futures_util::StreamExt;
 
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;

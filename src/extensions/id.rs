@@ -1,8 +1,7 @@
 //! IMAP ID extension specified in [RFC2971](https://datatracker.ietf.org/doc/html/rfc2971)
 
 use async_channel as channel;
-use futures::io;
-use futures::prelude::*;
+use futures_util::{Stream, StreamExt as _, TryStreamExt as _, io};
 use imap_proto::{self, RequestId, Response};
 use std::collections::HashMap;
 

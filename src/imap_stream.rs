@@ -4,9 +4,9 @@ use std::pin::Pin;
 #[cfg(feature = "runtime-async-std")]
 use async_std::io::{Read, Write, WriteExt};
 use bytes::BytesMut;
-use futures::stream::Stream;
-use futures::task::{Context, Poll};
-use futures::{io, ready};
+use futures_util::stream::Stream;
+use futures_util::task::{Context, Poll};
+use futures_util::{io, ready};
 use nom::Needed;
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
@@ -464,7 +464,7 @@ mod tests {
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn test_imap_stream_error() {
-        use futures::StreamExt;
+        use futures_util::StreamExt;
 
         let mock_stream = FailingStream::new(b"* OK\r\n");
         let mut imap_stream = ImapStream::new(mock_stream);

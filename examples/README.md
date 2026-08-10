@@ -12,4 +12,4 @@ Examples:
 * gmail_oauth2 - This is an example using oauth2 for logging into
   gmail via the OAUTH2 mechanism.
 
-* futures - The basic example, but using the `futures` executor.
+* futures - The basic example, but using the `futures` (`futures-executor`) executor.

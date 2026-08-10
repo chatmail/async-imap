@@ -7,7 +7,7 @@ use async_native_tls::TlsConnector;
 use async_smtp::{SendableEmail, SmtpClient, SmtpTransport};
 #[cfg(feature = "runtime-async-std")]
 use async_std::{net::TcpStream, task, task::sleep};
-use futures::{StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 #[cfg(feature = "runtime-tokio")]
 use tokio::{net::TcpStream, task, time::sleep};
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Result};
 use async_imap::extensions::idle::IdleResponse::*;
-use futures::StreamExt;
+use futures_util::StreamExt;
 
 #[cfg(feature = "runtime-async-std")]
 use async_std::{net::TcpStream, task, task::sleep};

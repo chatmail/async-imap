@@ -1,7 +1,7 @@
 use std::env;
 
 use anyhow::{bail, Result};
-use futures::TryStreamExt;
+use futures_util::TryStreamExt;
 
 #[cfg(feature = "runtime-async-std")]
 use async_std::net::TcpStream;
