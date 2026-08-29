@@ -266,4 +266,20 @@ impl Fetch {
             unreachable!()
         }
     }
+
+    /// Get the Gmail thread id (X-GM-THRID). Only present if the server
+    /// returned it (Gmail's X-GM-EXT-1).
+    pub fn gmail_thread_id(&self) -> Option<&u64> {
+        if let Response::Fetch(_, attrs) = self.response.parsed() {
+            attrs
+                .iter()
+                .filter_map(|av| match av {
+                    AttributeValue::GmailThrId(id) => Some(id),
+                    _ => None,
+                })
+                .next()
+        } else {
+            unreachable!()
+        }
+    }
 }
