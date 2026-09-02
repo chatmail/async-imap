@@ -214,26 +214,24 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
                 information,
                 tag,
             } = res.parsed()
+                && *tag == id
             {
                 ok_or_unauth_client_err!(
                     self.check_status_ok(status, code.as_ref(), information.as_deref()),
                     self
                 );
 
-                if *tag == id {
-                    let capabilities =
-                        if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) =
-                            code
-                        {
-                            use crate::types::{Capabilities, Capability};
-                            let capability_set: HashSet<Capability> =
-                                capabilities.iter().map(Capability::from).collect();
-                            Some(Capabilities(capability_set))
-                        } else {
-                            None
-                        };
-                    return Ok((Session::new(self.conn), capabilities));
-                }
+                let capabilities =
+                    if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) = code
+                    {
+                        use crate::types::{Capabilities, Capability};
+                        let capability_set: HashSet<Capability> =
+                            capabilities.iter().map(Capability::from).collect();
+                        Some(Capabilities(capability_set))
+                    } else {
+                        None
+                    };
+                return Ok((Session::new(self.conn), capabilities));
             }
         }
     }
@@ -1656,6 +1654,22 @@ mod tests {
                 unreachable!("invalid login");
             }
         }
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_ignores_completion_for_other_command_tag() {
+        let response = b"A9999 NO Other command rejected\r\n\
+                         A0001 OK Logged in\r\n"
+            .to_vec();
+        let client = mock_client!(MockStream::new(response));
+
+        let result = client.login("username", "password").await;
+
+        assert!(
+            result.is_ok(),
+            "LOGIN must use only its matching completion"
+        );
     }
 
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
