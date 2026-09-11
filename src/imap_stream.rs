@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 
 #[cfg(feature = "runtime-async-std")]
@@ -6,12 +7,63 @@ use async_std::io::{Read, Write, WriteExt};
 use bytes::BytesMut;
 use futures_util::stream::Stream;
 use futures_util::task::{Context, Poll};
-use futures_util::{io, ready};
+use futures_util::{future::poll_fn, io, ready};
 use nom::Needed;
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
 
 use crate::types::{Request, ResponseData};
+
+/// One parsed IMAP response or the retained prefix of a noncompliant oversized literal.
+#[derive(Debug)]
+pub enum LiteralAwareResponse {
+    /// A complete parsed IMAP response.
+    Parsed(ResponseData),
+    /// A body prefix retained from a server-declared literal larger than the configured limit.
+    LiteralPrefix(LiteralPrefix),
+}
+
+/// The bounded body prefix retained from an oversized server-declared literal.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LiteralPrefix {
+    declared_size: usize,
+    data: Vec<u8>,
+}
+
+impl LiteralPrefix {
+    /// Returns the literal size declared by the server.
+    pub fn declared_size(&self) -> usize {
+        self.declared_size
+    }
+
+    /// Returns exactly the retained prefix bytes.
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Consumes the outcome and returns exactly the retained prefix bytes.
+    pub fn into_data(self) -> Vec<u8> {
+        self.data
+    }
+}
+
+enum DecodeOutcome {
+    Parsed(ResponseData),
+    Incomplete,
+    OversizedLiteral(OversizedLiteralBoundary),
+}
+
+#[derive(Clone, Copy)]
+struct OversizedLiteralBoundary {
+    literal_start: usize,
+    declared_size: usize,
+}
+
+enum RecoverableDecodeError {
+    Incomplete,
+    OversizedLiteral(OversizedLiteralBoundary),
+    Invalid(io::Error),
+}
 
 /// Wraps a stream, and parses incoming data as imap server messages. Writes outgoing data
 /// as imap client messages.
@@ -39,9 +91,18 @@ pub struct ImapStream<R: Read + Write> {
 impl<R: Read + Write + Unpin> ImapStream<R> {
     /// Creates a new `ImapStream` based on the given `Read`er.
     pub fn new(inner: R) -> Self {
+        Self::new_with_max_response_size(
+            inner,
+            NonZeroUsize::new(Buffer::DEFAULT_MAX_CAPACITY)
+                .expect("default IMAP response limit is nonzero"),
+        )
+    }
+
+    /// Creates an `ImapStream` whose response buffer cannot grow past `max_response_size`.
+    pub fn new_with_max_response_size(inner: R, max_response_size: NonZeroUsize) -> Self {
         ImapStream {
             inner,
-            buffer: Buffer::new(),
+            buffer: Buffer::new_with_max_response_size(max_response_size),
             decode_needs: 0,
             read_closed: false,
         }
@@ -91,11 +152,11 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
     /// Attempts to decode a single response from the buffer.
     ///
     /// Returns `None` if the buffer does not contain enough data.
-    fn decode(&mut self) -> io::Result<Option<ResponseData>> {
+    fn decode(&mut self, literal_prefix_limit: Option<NonZeroUsize>) -> io::Result<DecodeOutcome> {
         if self.buffer.used() < self.decode_needs {
             // We know that there is not enough data to decode anything
             // from previous attempts.
-            return Ok(None);
+            return Ok(DecodeOutcome::Incomplete);
         }
 
         let block = self.buffer.take_block();
@@ -113,17 +174,24 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 }
                 Err(nom::Err::Incomplete(Needed::Size(min))) => {
                     log::trace!("decode: incomplete data, need minimum {min} bytes");
+                    if let Some(limit) = literal_prefix_limit
+                        && let Some(boundary) =
+                            oversized_literal_boundary(buf, usize::from(min), limit)
+                    {
+                        self.decode_needs = 0;
+                        return Err(RecoverableDecodeError::OversizedLiteral(boundary));
+                    }
                     self.decode_needs = self.buffer.used() + usize::from(min);
-                    Err(None)
+                    Err(RecoverableDecodeError::Incomplete)
                 }
                 Err(nom::Err::Incomplete(_)) => {
                     log::trace!("decode: incomplete data, need unknown number of bytes");
                     self.decode_needs = 0;
-                    Err(None)
+                    Err(RecoverableDecodeError::Incomplete)
                 }
                 Err(other) => {
                     self.decode_needs = 0;
-                    Err(Some(io::Error::other(format!(
+                    Err(RecoverableDecodeError::Invalid(io::Error::other(format!(
                         "{:?} during parsing of {:?}",
                         other,
                         String::from_utf8_lossy(buf)
@@ -132,28 +200,47 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
             }
         });
         match res {
-            Ok(response) => Ok(Some(response)),
+            Ok(response) => Ok(DecodeOutcome::Parsed(response)),
             Err((heads, err)) => {
                 self.buffer.return_block(heads);
                 match err {
-                    Some(err) => Err(err),
-                    None => Ok(None),
+                    RecoverableDecodeError::Incomplete => Ok(DecodeOutcome::Incomplete),
+                    RecoverableDecodeError::OversizedLiteral(boundary) => {
+                        Ok(DecodeOutcome::OversizedLiteral(boundary))
+                    }
+                    RecoverableDecodeError::Invalid(error) => Err(error),
                 }
             }
         }
     }
 
-    fn do_poll_next(
+    fn do_poll_next_with_literal_prefix(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<io::Result<ResponseData>>> {
+        literal_prefix_limit: Option<NonZeroUsize>,
+    ) -> Poll<Option<io::Result<LiteralAwareResponse>>> {
         let this = &mut *self;
-        if let Some(response) = this.decode()? {
-            return Poll::Ready(Some(Ok(response)));
+        match this.decode(literal_prefix_limit)? {
+            DecodeOutcome::Parsed(response) => {
+                return Poll::Ready(Some(Ok(LiteralAwareResponse::Parsed(response))));
+            }
+            DecodeOutcome::OversizedLiteral(boundary) => {
+                if let Some(response) =
+                    this.read_literal_prefix(cx, boundary, literal_prefix_limit.expect("set"))?
+                {
+                    return Poll::Ready(Some(Ok(response)));
+                }
+                return Poll::Pending;
+            }
+            DecodeOutcome::Incomplete => {}
         }
         loop {
             this.buffer.ensure_capacity(this.decode_needs)?;
-            let buf = this.buffer.free_as_mut_slice();
+            let mut buf = this.buffer.free_as_mut_slice();
+            if let Some(limit) = literal_prefix_limit {
+                let allowed = buf.len().min(limit.get());
+                buf = &mut buf[..allowed];
+            }
 
             // The buffer should have at least one byte free
             // before we try reading into it
@@ -183,11 +270,132 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 return Poll::Ready(None);
             }
             this.buffer.extend_used(num_bytes_read);
-            if let Some(response) = this.decode()? {
-                return Poll::Ready(Some(Ok(response)));
+            match this.decode(literal_prefix_limit)? {
+                DecodeOutcome::Parsed(response) => {
+                    return Poll::Ready(Some(Ok(LiteralAwareResponse::Parsed(response))));
+                }
+                DecodeOutcome::OversizedLiteral(boundary) => {
+                    if let Some(response) =
+                        this.read_literal_prefix(cx, boundary, literal_prefix_limit.expect("set"))?
+                    {
+                        return Poll::Ready(Some(Ok(response)));
+                    }
+                    return Poll::Pending;
+                }
+                DecodeOutcome::Incomplete => {}
             }
         }
     }
+
+    fn read_literal_prefix(
+        &mut self,
+        cx: &mut Context<'_>,
+        boundary: OversizedLiteralBoundary,
+        literal_prefix_limit: NonZeroUsize,
+    ) -> io::Result<Option<LiteralAwareResponse>> {
+        let target = boundary
+            .literal_start
+            .checked_add(literal_prefix_limit.get())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "IMAP literal overflow"))?;
+        self.buffer.ensure_capacity(target)?;
+        while self.buffer.used() < target {
+            let remaining = target - self.buffer.used();
+            let buf = &mut self.buffer.free_as_mut_slice()[..remaining];
+
+            #[cfg(feature = "runtime-async-std")]
+            let num_bytes_read = match Pin::new(&mut self.inner).poll_read(cx, buf) {
+                Poll::Pending => return Ok(None),
+                Poll::Ready(result) => result?,
+            };
+
+            #[cfg(feature = "runtime-tokio")]
+            let num_bytes_read = {
+                let mut buf = tokio::io::ReadBuf::new(buf);
+                match Pin::new(&mut self.inner).poll_read(cx, &mut buf) {
+                    Poll::Pending => return Ok(None),
+                    Poll::Ready(result) => result?,
+                }
+                buf.filled().len()
+            };
+
+            if num_bytes_read == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "oversized IMAP literal ended before its retained prefix",
+                ));
+            }
+            self.buffer.extend_used(num_bytes_read);
+        }
+
+        let block = self.buffer.take_block();
+        let data = block[boundary.literal_start..target].to_vec();
+        self.buffer.reset_with_data(&[]);
+        self.read_closed = true;
+        Ok(Some(LiteralAwareResponse::LiteralPrefix(LiteralPrefix {
+            declared_size: boundary.declared_size,
+            data,
+        })))
+    }
+
+    pub async fn next_with_literal_prefix(
+        &mut self,
+        literal_prefix_limit: NonZeroUsize,
+    ) -> Option<io::Result<LiteralAwareResponse>> {
+        poll_fn(|cx| {
+            if self.read_closed {
+                return Poll::Ready(None);
+            }
+            let result = ready!(
+                Pin::new(&mut *self)
+                    .do_poll_next_with_literal_prefix(cx, Some(literal_prefix_limit))
+            );
+            if matches!(result, Some(Err(_))) {
+                self.read_closed = true;
+            }
+            Poll::Ready(result)
+        })
+        .await
+    }
+}
+
+fn oversized_literal_boundary(
+    input: &[u8],
+    needed: usize,
+    literal_prefix_limit: NonZeroUsize,
+) -> Option<OversizedLiteralBoundary> {
+    for (start, byte) in input.iter().copied().enumerate() {
+        if byte != b'{' {
+            continue;
+        }
+        let digits_start = start + 1;
+        let Some(relative_end) = input[digits_start..]
+            .windows(3)
+            .position(|window| window == b"}\r\n")
+        else {
+            continue;
+        };
+        let digits_end = digits_start + relative_end;
+        let Ok(digits) = std::str::from_utf8(&input[digits_start..digits_end]) else {
+            continue;
+        };
+        if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(declared_size) = digits.parse::<usize>() else {
+            continue;
+        };
+        let literal_start = digits_end + 3;
+        let buffered_literal = input.len() - literal_start;
+        if declared_size > literal_prefix_limit.get()
+            && declared_size.checked_sub(buffered_literal) == Some(needed)
+        {
+            return Some(OversizedLiteralBoundary {
+                literal_start,
+                declared_size,
+            });
+        }
+    }
+    None
 }
 
 /// Abstraction around needed buffer management.
@@ -196,16 +404,29 @@ struct Buffer {
     block: BytesMut,
     /// Offset where used bytes range ends.
     offset: usize,
+    /// Largest response allocation permitted for this stream.
+    max_capacity: NonZeroUsize,
 }
 
 impl Buffer {
     const BLOCK_SIZE: usize = 1024 * 4;
-    const MAX_CAPACITY: usize = 512 * 1024 * 1024; // 512 MiB
+    const DEFAULT_MAX_CAPACITY: usize = 512 * 1024 * 1024; // 512 MiB
+    #[cfg(test)]
+    const MAX_CAPACITY: usize = Self::DEFAULT_MAX_CAPACITY;
 
+    #[cfg(test)]
     fn new() -> Self {
+        Self::new_with_max_response_size(
+            NonZeroUsize::new(Self::DEFAULT_MAX_CAPACITY)
+                .expect("default IMAP response limit is nonzero"),
+        )
+    }
+
+    fn new_with_max_response_size(max_capacity: NonZeroUsize) -> Self {
         Self {
-            block: BytesMut::zeroed(Self::BLOCK_SIZE),
+            block: BytesMut::zeroed(Self::BLOCK_SIZE.min(max_capacity.get())),
             offset: 0,
+            max_capacity,
         }
     }
 
@@ -258,22 +479,24 @@ impl Buffer {
     /// The specified number of bytes is only a minimum.  The buffer could grow by more as
     /// it will always grow in multiples of [`BLOCK_SIZE`].
     ///
-    /// If the size would be larger than [`MAX_CAPACITY`] an error is returned.
+    /// If the size would be larger than the configured response limit an error is returned.
     ///
     /// [`BLOCK_SIZE`]: Self::BLOCK_SIZE
-    /// [`MAX_CAPACITY`]: Self::MAX_CAPACITY
     fn grow(&mut self, num_bytes: usize) -> io::Result<()> {
         let min_size = self.block.len() + num_bytes;
+        if min_size > self.max_capacity.get() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "incoming IMAP response too large",
+            ));
+        }
         let new_size = match min_size % Self::BLOCK_SIZE {
             0 => min_size,
             n => min_size + (Self::BLOCK_SIZE - n),
-        };
-        if new_size > Self::MAX_CAPACITY {
-            Err(io::Error::other("incoming data too large"))
-        } else {
-            self.block.resize(new_size, 0);
-            Ok(())
         }
+        .min(self.max_capacity.get());
+        self.block.resize(new_size, 0);
+        Ok(())
     }
 
     /// Return the block backing the buffer.
@@ -285,7 +508,10 @@ impl Buffer {
     /// [`reset_with_data`]: Self::reset_with_data
     // TODO: Enforce this with typestate.
     fn take_block(&mut self) -> BytesMut {
-        std::mem::replace(&mut self.block, BytesMut::zeroed(Self::BLOCK_SIZE))
+        std::mem::replace(
+            &mut self.block,
+            BytesMut::zeroed(Self::BLOCK_SIZE.min(self.max_capacity.get())),
+        )
     }
 
     /// Reset the buffer to be a new allocation with given data copied in.
@@ -303,7 +529,8 @@ impl Buffer {
         let new_size = match min_size % Self::BLOCK_SIZE {
             0 => min_size + Self::BLOCK_SIZE,
             n => min_size + (Self::BLOCK_SIZE - n),
-        };
+        }
+        .min(self.max_capacity.get());
         self.block = BytesMut::zeroed(new_size);
         self.block[..data.len()].copy_from_slice(data);
 
@@ -332,13 +559,16 @@ impl<R: Read + Write + Unpin> Stream for ImapStream<R> {
         if self.read_closed {
             return Poll::Ready(None);
         }
-        let res = match ready!(self.as_mut().do_poll_next(cx)) {
+        let res = match ready!(self.as_mut().do_poll_next_with_literal_prefix(cx, None)) {
             None => None,
             Some(Err(err)) => {
                 self.read_closed = true;
                 Some(Err(err))
             }
-            Some(Ok(item)) => Some(Ok(item)),
+            Some(Ok(LiteralAwareResponse::Parsed(item))) => Some(Ok(item)),
+            Some(Ok(LiteralAwareResponse::LiteralPrefix(_))) => {
+                unreachable!("the Stream implementation does not cap literals")
+            }
         };
         Poll::Ready(res)
     }
@@ -474,6 +704,118 @@ mod tests {
 
         // IMAP stream should end even though underlying stream fails only once.
         assert!(imap_stream.next().await.is_none());
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn oversized_literal_is_rejected_before_buffer_allocation() {
+        use futures_util::StreamExt;
+
+        const RESPONSE_LIMIT: usize = 64 * 1024;
+        let mock_stream =
+            crate::mock_stream::MockStream::new(b"* 1 FETCH (BODY[] {33554432}\r\n".to_vec());
+        let mut imap_stream = ImapStream::new_with_max_response_size(
+            mock_stream,
+            NonZeroUsize::new(RESPONSE_LIMIT).expect("test response limit is nonzero"),
+        );
+
+        let error = imap_stream
+            .next()
+            .await
+            .expect("stream should return the literal-size error")
+            .expect_err("literal declaration exceeds the configured limit");
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "incoming IMAP response too large");
+        assert!(imap_stream.buffer.block.len() <= RESPONSE_LIMIT);
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn oversized_literal_returns_only_the_configured_prefix_without_draining() {
+        const LITERAL_LIMIT: usize = 8 * 1024;
+        const DECLARED_LITERAL_SIZE: usize = 10 * 1024;
+        let declaration =
+            format!("* 1 FETCH (UID 42 BODY[] {{{DECLARED_LITERAL_SIZE}}}\r\n").into_bytes();
+        let mut response = declaration.clone();
+        response.extend(std::iter::repeat_n(b'x', DECLARED_LITERAL_SIZE));
+        response.extend_from_slice(b")\r\nA0001 OK done\r\n");
+        let stream = crate::mock_stream::MockStream::new(response).with_max_read_size(1024);
+        let mut imap_stream = ImapStream::new_with_max_response_size(
+            stream,
+            NonZeroUsize::new(LITERAL_LIMIT + 1024).expect("test response limit is nonzero"),
+        );
+
+        let response = imap_stream
+            .next_with_literal_prefix(
+                NonZeroUsize::new(LITERAL_LIMIT).expect("test literal limit is nonzero"),
+            )
+            .await
+            .expect("literal-prefix read should succeed")
+            .expect("stream should return one item");
+        let LiteralAwareResponse::LiteralPrefix(literal) = response else {
+            panic!("oversized declaration should return a prefix");
+        };
+
+        assert_eq!(literal.declared_size(), DECLARED_LITERAL_SIZE);
+        assert_eq!(literal.data(), vec![b'x'; LITERAL_LIMIT]);
+        assert!(
+            imap_stream.buffer.block.len() <= LITERAL_LIMIT + 1024,
+            "the stream must never allocate the declared literal size"
+        );
+        assert_eq!(
+            imap_stream.get_ref().read_position(),
+            declaration.len() + LITERAL_LIMIT,
+            "the unread literal suffix and tagged completion must remain on the socket"
+        );
+        assert!(
+            imap_stream
+                .next_with_literal_prefix(
+                    NonZeroUsize::new(LITERAL_LIMIT).expect("test literal limit is nonzero"),
+                )
+                .await
+                .is_none(),
+            "a capped stream must remain permanently read-closed"
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn marker_like_literal_bytes_cannot_replace_the_parser_confirmed_boundary() {
+        const LITERAL_LIMIT: usize = 8 * 1024;
+        const DECLARED_LITERAL_SIZE: usize = 10 * 1024;
+        let declaration =
+            format!("* 1 FETCH (UID 42 BODY[] {{{DECLARED_LITERAL_SIZE}}}\r\n").into_bytes();
+        // This fake declaration also satisfies `declared - buffered == Needed::Size`.
+        // Selecting the earliest matching marker is what identifies the real parser boundary.
+        let fake_marker = format!("{{{}}}\r\n", DECLARED_LITERAL_SIZE - 9).into_bytes();
+        let mut body = fake_marker.clone();
+        body.extend(std::iter::repeat_n(
+            b'y',
+            DECLARED_LITERAL_SIZE - fake_marker.len(),
+        ));
+        let mut response = declaration;
+        response.extend_from_slice(&body);
+        response.extend_from_slice(b")\r\nA0001 OK done\r\n");
+        let stream = crate::mock_stream::MockStream::new(response).with_max_read_size(1024);
+        let mut imap_stream = ImapStream::new_with_max_response_size(
+            stream,
+            NonZeroUsize::new(LITERAL_LIMIT + 1024).expect("test response limit is nonzero"),
+        );
+
+        let response = imap_stream
+            .next_with_literal_prefix(
+                NonZeroUsize::new(LITERAL_LIMIT).expect("test literal limit is nonzero"),
+            )
+            .await
+            .expect("literal-prefix read should succeed")
+            .expect("stream should return one item");
+        let LiteralAwareResponse::LiteralPrefix(literal) = response else {
+            panic!("oversized declaration should return a prefix");
+        };
+
+        assert_eq!(literal.declared_size(), DECLARED_LITERAL_SIZE);
+        assert_eq!(literal.data(), &body[..LITERAL_LIMIT]);
     }
 
     #[test]

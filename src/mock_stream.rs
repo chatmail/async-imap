@@ -16,6 +16,7 @@ pub struct MockStream {
     err_on_read: bool,
     eof_on_read: bool,
     read_delay: usize,
+    max_read_size: Option<usize>,
 }
 
 impl MockStream {
@@ -42,6 +43,15 @@ impl MockStream {
         self.read_delay = 1;
         self
     }
+
+    pub fn with_max_read_size(mut self, max_read_size: usize) -> MockStream {
+        self.max_read_size = Some(max_read_size);
+        self
+    }
+
+    pub fn read_position(&self) -> usize {
+        self.read_pos
+    }
 }
 
 #[cfg(feature = "runtime-tokio")]
@@ -55,12 +65,15 @@ impl Read for MockStream {
             return Poll::Ready(Ok(()));
         }
         if self.err_on_read {
-            return Poll::Ready(Err(Error::new(ErrorKind::Other, "MockStream Error")));
+            return Poll::Ready(Err(Error::other("MockStream Error")));
         }
         if self.read_pos >= self.read_buf.len() {
             return Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "EOF")));
         }
         let mut write_len = min(buf.remaining(), self.read_buf.len() - self.read_pos);
+        if let Some(max_read_size) = self.max_read_size {
+            write_len = min(write_len, max_read_size);
+        }
         if self.read_delay > 0 {
             self.read_delay -= 1;
             write_len = min(write_len, 1);
@@ -109,6 +122,9 @@ impl Read for MockStream {
             return Poll::Ready(Err(Error::new(ErrorKind::UnexpectedEof, "EOF")));
         }
         let mut write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+        if let Some(max_read_size) = self.max_read_size {
+            write_len = min(write_len, max_read_size);
+        }
         if self.read_delay > 0 {
             self.read_delay -= 1;
             write_len = min(write_len, 1);
