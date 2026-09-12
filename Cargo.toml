@@ -30,7 +30,7 @@ runtime-tokio = ["tokio", "async-compression?/tokio"]
 async-channel = "2.0.0"
 async-compression = { version = "0.4.15", default-features = false, features = ["deflate"], optional = true }
 async-std = { version = "1.8.0", default-features = false, features = ["std", "unstable"], optional = true }
-base64 = "0.22.1"
+base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 futures-util = {version = "0.3.15", features = ["io"] }
