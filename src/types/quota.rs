@@ -1,7 +1,7 @@
-use imap_proto::types::Quota as QuotaRef;
-use imap_proto::types::QuotaResource as QuotaResourceRef;
-use imap_proto::types::QuotaResourceName as QuotaResourceNameRef;
-use imap_proto::types::QuotaRoot as QuotaRootRef;
+use imap_proto::rfc2087::Quota as QuotaRef;
+use imap_proto::rfc2087::QuotaResource as QuotaResourceRef;
+use imap_proto::rfc2087::QuotaResourceName as QuotaResourceNameRef;
+use imap_proto::rfc2087::QuotaRoot as QuotaRootRef;
 
 /// <https://tools.ietf.org/html/rfc2087#section-3>
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]

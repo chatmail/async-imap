@@ -1,4 +1,4 @@
-use imap_proto::types::Capability as CapabilityRef;
+use imap_proto::Capability as CapabilityRef;
 use std::collections::HashSet;
 use std::collections::hash_set::Iter;
 

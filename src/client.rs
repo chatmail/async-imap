@@ -11,7 +11,8 @@ use base64::Engine as _;
 use extensions::id::{format_identification, parse_id};
 use extensions::quota::parse_get_quota_root;
 use futures_util::{Stream, TryStreamExt, io};
-use imap_proto::{Metadata, RequestId, Response};
+use imap_proto::rfc5464::Metadata;
+use imap_proto::{RequestId, Response};
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
 
@@ -210,19 +211,23 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
 
             if let Response::Done {
                 status,
-                code,
-                information,
+                outcome,
                 tag,
             } = res.parsed()
                 && *tag == id
             {
                 ok_or_unauth_client_err!(
-                    self.check_status_ok(status, code.as_ref(), information.as_deref()),
+                    self.check_status_ok(
+                        status,
+                        outcome.code.as_ref(),
+                        outcome.information.as_deref()
+                    ),
                     self
                 );
 
                 let capabilities =
-                    if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) = code
+                    if let Some(imap_proto::ResponseCode::Capabilities(capabilities)) =
+                        &outcome.code
                     {
                         use crate::types::{Capabilities, Capability};
                         let capability_set: HashSet<Capability> =
@@ -306,8 +311,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
                 return Err((Error::ConnectionLost, self));
             };
             match res.parsed() {
-                Response::Continue { information, .. } => {
-                    let challenge = if let Some(text) = information {
+                Response::Continue(outcome) => {
+                    let challenge = if let Some(text) = &outcome.information {
                         ok_or_unauth_client_err!(
                             base64::engine::general_purpose::STANDARD
                                 .decode(text.as_ref())
@@ -1462,13 +1467,16 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     ) -> Result<()> {
         loop {
             if let Response::Done {
-                status,
-                code,
-                information,
                 tag,
+                status,
+                outcome,
             } = response.parsed()
             {
-                self.check_status_ok(status, code.as_ref(), information.as_deref())?;
+                self.check_status_ok(
+                    status,
+                    outcome.code.as_ref(),
+                    outcome.information.as_deref(),
+                )?;
 
                 if tag == id {
                     return Ok(());
@@ -1576,8 +1584,10 @@ mod tests {
             actual_response.parsed(),
             &Response::Data {
                 status: Status::Ok,
-                code: None,
-                information: Some(Cow::Borrowed("Dovecot ready.")),
+                outcome: imap_proto::Outcome {
+                    code: None,
+                    information: Some(Cow::Borrowed("Dovecot ready."))
+                },
             }
         );
     }

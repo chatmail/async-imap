@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use async_channel as channel;
 use futures_util::stream::Stream;
 use futures_util::{StreamExt as _, TryStreamExt as _, io};
-use imap_proto::{self, MailboxDatum, Metadata, RequestId, Response};
+use imap_proto::rfc5464::Metadata;
+use imap_proto::{self, MailboxDatum, RequestId, Response};
 
 use crate::error::{Error, Result};
 use crate::types::ResponseData;
@@ -103,8 +104,7 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
             Response::Done {
                 tag,
                 status,
-                code,
-                information,
+                outcome,
                 ..
             } if tag == &command_tag => {
                 use imap_proto::Status;
@@ -113,14 +113,14 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::No(format!("outcome: {outcome:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {status:?}, code: {code:?}, information: {information:?}"
+                            "status: {status:?}, outcome: {outcome:?}"
                         ))));
                     }
                 }
@@ -236,8 +236,7 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
             Response::Done {
                 tag,
                 status,
-                code,
-                information,
+                outcome,
                 ..
             } if tag == &command_tag => {
                 use imap_proto::Status;
@@ -246,29 +245,25 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::No(format!("outcome: {outcome:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {status:?}, code: {code:?}, information: {information:?}"
+                            "status: {status:?}, outcome: {outcome:?}"
                         ))));
                     }
                 }
             }
-            Response::Data {
-                status,
-                code,
-                information,
-            } => {
+            Response::Data { status, outcome } => {
                 use imap_proto::Status;
 
                 match status {
                     Status::Ok => {
                         use imap_proto::ResponseCode;
-                        match code {
+                        match &outcome.code {
                             Some(ResponseCode::UidValidity(uid)) => {
                                 mailbox.uid_validity = Some(*uid);
                             }
@@ -290,14 +285,14 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         }
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("code: {code:?}, info: {information:?}")));
+                        return Err(Error::No(format!("outcome: {outcome:?}")));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
-                            "status: {status:?}, code: {code:?}, information: {information:?}"
+                            "status: {status:?}, outcome: {outcome:?}"
                         ))));
                     }
                 }
@@ -437,7 +432,7 @@ mod tests {
             .map(|line| {
                 let block = BytesMut::from(line.as_bytes());
                 ResponseData::try_new(block, |bytes| -> io::Result<_> {
-                    let (remaining, response) = imap_proto::parser::parse_response(bytes).unwrap();
+                    let (remaining, response) = imap_proto::Response::parse(bytes).unwrap();
                     assert_eq!(remaining.len(), 0);
                     Ok(response)
                 })

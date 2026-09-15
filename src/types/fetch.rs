@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
 use chrono::{DateTime, FixedOffset};
-use imap_proto::types::{
-    AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath,
-};
+use imap_proto::{AttributeValue, BodyStructure, Envelope, MessageSection, Response, SectionPath};
 
 use super::{Flag, Seq, Uid};
 use crate::types::ResponseData;

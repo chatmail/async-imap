@@ -194,7 +194,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
                 Response::Done {
                     tag,
                     status,
-                    information,
+                    outcome,
                     ..
                 } => {
                     if tag == self.id.as_ref().unwrap()
@@ -202,7 +202,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
                     {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::ConnectionRefused,
-                            information.as_ref().unwrap().to_string(),
+                            outcome.information.as_ref().unwrap().to_string(),
                         )
                         .into());
                     }
