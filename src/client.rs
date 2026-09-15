@@ -210,19 +210,23 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
 
             if let Response::Done {
                 status,
-                code,
-                information,
+                outcome,
                 tag,
             } = res.parsed()
                 && *tag == id
             {
                 ok_or_unauth_client_err!(
-                    self.check_status_ok(status, code.as_ref(), information.as_deref()),
+                    self.check_status_ok(
+                        status,
+                        outcome.code.as_ref(),
+                        outcome.information.as_deref()
+                    ),
                     self
                 );
 
                 let capabilities =
-                    if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) = code
+                    if let Some(imap_proto::types::ResponseCode::Capabilities(capabilities)) =
+                        &outcome.code
                     {
                         use crate::types::{Capabilities, Capability};
                         let capability_set: HashSet<Capability> =
@@ -306,8 +310,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
                 return Err((Error::ConnectionLost, self));
             };
             match res.parsed() {
-                Response::Continue { information, .. } => {
-                    let challenge = if let Some(text) = information {
+                Response::Continue(outcome) => {
+                    let challenge = if let Some(text) = &outcome.information {
                         ok_or_unauth_client_err!(
                             base64::engine::general_purpose::STANDARD
                                 .decode(text.as_ref())
@@ -1462,13 +1466,16 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     ) -> Result<()> {
         loop {
             if let Response::Done {
-                status,
-                code,
-                information,
                 tag,
+                status,
+                outcome,
             } = response.parsed()
             {
-                self.check_status_ok(status, code.as_ref(), information.as_deref())?;
+                self.check_status_ok(
+                    status,
+                    outcome.code.as_ref(),
+                    outcome.information.as_deref(),
+                )?;
 
                 if tag == id {
                     return Ok(());
@@ -1576,8 +1583,10 @@ mod tests {
             actual_response.parsed(),
             &Response::Data {
                 status: Status::Ok,
-                code: None,
-                information: Some(Cow::Borrowed("Dovecot ready.")),
+                outcome: imap_proto::Outcome {
+                    code: None,
+                    information: Some(Cow::Borrowed("Dovecot ready."))
+                },
             }
         );
     }
@@ -1698,6 +1707,34 @@ mod tests {
         } else {
             unreachable!("invalid login");
         }
+    }
+
+    /// Example of a string that mail.systemausfall.org returned on 2026-09-14.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_with_capabilities_and_en_dash() {
+        let response = b"A0001 OK [CAPABILITY IMAP4rev1 LOGIN-REFERRALS ID ENABLE IDLE SASL-IR LITERAL+ AUTH=PLAIN AUTH=LOGIN AUTH=XOAUTH2] Logged in \xe2\x80\x93 go ahead!\r\n".to_vec();
+        let username = "username";
+        let password = "password";
+        let command = format!("A0001 LOGIN {} {}\r\n", quote!(username), quote!(password));
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        let (session, capabilities) = client
+            .login_with_capabilities(username, password)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session.stream.inner.written_buf,
+            command.as_bytes().to_vec(),
+            "Invalid login command"
+        );
+        let capabilities = capabilities.expect("Capabilities should not be None");
+        assert_eq!(capabilities.len(), 10);
+        assert!(capabilities.has(&Capability::Imap4rev1));
+        assert!(!capabilities.has(&Capability::Atom("MOVE".to_string())));
+        assert!(capabilities.has(&Capability::Atom("IDLE".to_string())));
+        assert!(capabilities.has(&Capability::Atom("ID".to_string())));
     }
 
     /// Tests that `login_with_capabilities()` returns None
