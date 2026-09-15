@@ -1709,6 +1709,34 @@ mod tests {
         }
     }
 
+    /// Example of a string that mail.systemausfall.org returned on 2026-09-14.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_with_capabilities_and_en_dash() {
+        let response = b"A0001 OK [CAPABILITY IMAP4rev1 LOGIN-REFERRALS ID ENABLE IDLE SASL-IR LITERAL+ AUTH=PLAIN AUTH=LOGIN AUTH=XOAUTH2] Logged in \xe2\x80\x93 go ahead!\r\n".to_vec();
+        let username = "username";
+        let password = "password";
+        let command = format!("A0001 LOGIN {} {}\r\n", quote!(username), quote!(password));
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        let (session, capabilities) = client
+            .login_with_capabilities(username, password)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session.stream.inner.written_buf,
+            command.as_bytes().to_vec(),
+            "Invalid login command"
+        );
+        let capabilities = capabilities.expect("Capabilities should not be None");
+        assert_eq!(capabilities.len(), 10);
+        assert!(capabilities.has(&Capability::Imap4rev1));
+        assert!(!capabilities.has(&Capability::Atom("MOVE".to_string())));
+        assert!(capabilities.has(&Capability::Atom("IDLE".to_string())));
+        assert!(capabilities.has(&Capability::Atom("ID".to_string())));
+    }
+
     /// Tests that `login_with_capabilities()` returns None
     /// if no capabilities are in the response to the LOGIN command.
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
