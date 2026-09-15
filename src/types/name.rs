@@ -1,5 +1,5 @@
 pub use imap_proto::types::NameAttribute;
-use imap_proto::{MailboxDatum, Response};
+use imap_proto::{MailboxDatum, MailboxListData, Response};
 use self_cell::self_cell;
 
 use crate::types::ResponseData;
@@ -26,11 +26,11 @@ pub struct InnerName<'a> {
 impl Name {
     pub(crate) fn from_mailbox_data(resp: ResponseData) -> Self {
         Name::new(Box::new(resp), |response| match response.parsed() {
-            Response::MailboxData(MailboxDatum::List {
+            Response::MailboxData(MailboxDatum::List(MailboxListData {
                 name_attributes,
                 delimiter,
                 name,
-            }) => InnerName {
+            })) => InnerName {
                 attributes: name_attributes.to_owned(),
                 delimiter: delimiter.as_deref(),
                 name,

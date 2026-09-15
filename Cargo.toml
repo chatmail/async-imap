@@ -34,7 +34,7 @@ base64 = "0.22.1"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 futures-util = {version = "0.3.15", features = ["io"] }
-imap-proto = "0.16.4"
+imap-proto = { git = "https://github.com/djc/imap-proto.git" }
 log = "0.4.8"
 nom = "7.0"
 pin-project = "1"
