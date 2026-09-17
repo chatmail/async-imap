@@ -266,4 +266,22 @@ impl Fetch {
             unreachable!()
         }
     }
+
+    /// Extract the `X-GM-THRID` of a `FETCH` response
+    ///
+    /// See [Access to Gmail thread IDs: X-GM-THRID](https://developers.google.com/gmail/imap/imap-extensions#access_to_gmail_thread_ids_x-gm-thrid)
+    /// for details.
+    pub fn gmail_thr_id(&self) -> Option<&u64> {
+        if let Response::Fetch(_, attrs) = self.response.parsed() {
+            attrs
+                .iter()
+                .filter_map(|av| match av {
+                    AttributeValue::GmailThrId(id) => Some(id),
+                    _ => None,
+                })
+                .next()
+        } else {
+            unreachable!()
+        }
+    }
 }
