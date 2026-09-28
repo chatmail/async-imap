@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use async_channel as channel;
 use futures_util::stream::Stream;
-use futures_util::{StreamExt as _, TryStreamExt as _, io};
+use futures_util::{TryStreamExt as _, io};
 use imap_proto::{self, MailboxDatum, Metadata, RequestId, Response};
 
 use crate::error::{Error, Result};
@@ -38,6 +38,35 @@ pub(crate) fn parse_names<T: Stream<Item = io::Result<ResponseData>> + Unpin + S
             .boxed()
         },
     )
+}
+
+/// Our command's completion, if this response is it: `Ok(())` for `OK`, an
+/// error for `NO`/`BAD`.
+///
+/// Returns `None` for any other response, including another command's
+/// completion - see the LOGIN case in `Client::login`.
+///
+/// Parsers that merely stop at the tag cannot tell a failed command from an
+/// empty result: a rejected `SEARCH` reaches the caller as "no matches".
+fn command_completion(resp: &Response<'_>, command_tag: &RequestId) -> Option<Result<()>> {
+    use imap_proto::Status;
+    match resp {
+        Response::Done {
+            tag,
+            status,
+            code,
+            information,
+            ..
+        } if tag == command_tag => Some(match status {
+            Status::Ok => Ok(()),
+            Status::Bad => Err(Error::Bad(format!("code: {code:?}, info: {information:?}"))),
+            Status::No => Err(Error::No(format!("code: {code:?}, info: {information:?}"))),
+            _ => Err(Error::Io(io::Error::other(format!(
+                "status: {status:?}, code: {code:?}, information: {information:?}"
+            )))),
+        }),
+        _ => None,
+    }
 }
 
 pub(crate) fn filter(
@@ -188,11 +217,11 @@ pub(crate) async fn parse_capabilities<T: Stream<Item = io::Result<ResponseData>
 ) -> Result<Capabilities> {
     let mut caps: HashSet<Capability> = HashSet::new();
 
-    while let Some(resp) = stream
-        .take_while(|res| filter(res, &command_tag))
-        .try_next()
-        .await?
-    {
+    while let Some(resp) = stream.try_next().await? {
+        if let Some(completion) = command_completion(resp.parsed(), &command_tag) {
+            completion?;
+            break;
+        }
         match resp.parsed() {
             Response::Capabilities(cs) => {
                 for c in cs {
@@ -213,11 +242,11 @@ pub(crate) async fn parse_noop<T: Stream<Item = io::Result<ResponseData>> + Unpi
     unsolicited: channel::Sender<UnsolicitedResponse>,
     command_tag: RequestId,
 ) -> Result<()> {
-    while let Some(resp) = stream
-        .take_while(|res| filter(res, &command_tag))
-        .try_next()
-        .await?
-    {
+    while let Some(resp) = stream.try_next().await? {
+        if let Some(completion) = command_completion(resp.parsed(), &command_tag) {
+            completion?;
+            break;
+        }
         handle_unilateral(resp, unsolicited.clone());
     }
 
@@ -338,11 +367,11 @@ pub(crate) async fn parse_ids<T: Stream<Item = io::Result<ResponseData>> + Unpin
 ) -> Result<HashSet<u32>> {
     let mut ids: HashSet<u32> = HashSet::new();
 
-    while let Some(resp) = stream
-        .take_while(|res| filter(res, &command_tag))
-        .try_next()
-        .await?
-    {
+    while let Some(resp) = stream.try_next().await? {
+        if let Some(completion) = command_completion(resp.parsed(), &command_tag) {
+            completion?;
+            break;
+        }
         match resp.parsed() {
             Response::MailboxData(MailboxDatum::Search(cs)) => {
                 for c in cs {
@@ -366,11 +395,11 @@ pub(crate) async fn parse_metadata<T: Stream<Item = io::Result<ResponseData>> + 
     command_tag: RequestId,
 ) -> Result<Vec<Metadata>> {
     let mut res_values = Vec::new();
-    while let Some(resp) = stream
-        .take_while(|res| filter(res, &command_tag))
-        .try_next()
-        .await?
-    {
+    while let Some(resp) = stream.try_next().await? {
+        if let Some(completion) = command_completion(resp.parsed(), &command_tag) {
+            completion?;
+            break;
+        }
         match resp.parsed() {
             // METADATA Response with Values
             // <https://datatracker.ietf.org/doc/html/rfc5464.html#section-4.4.1>
@@ -744,5 +773,52 @@ mod tests {
         assert!(recv.is_empty());
 
         assert!(matches!(mailbox, Err(Error::No(_))));
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn parse_ids_reports_a_tagged_no_as_an_error() {
+        let (send, recv) = bounded(10);
+        let responses = input_stream(&["A0001 NO [SERVERBUG] SEARCH failed\r\n"]);
+        let mut stream = async_std::stream::from_iter(responses);
+
+        let id = RequestId("A0001".into());
+        let ids = parse_ids(&mut stream, send, id).await;
+
+        assert!(recv.is_empty());
+        assert!(
+            matches!(ids, Err(Error::No(_))),
+            "a refused SEARCH must not reach the caller as an empty result",
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn parse_ids_ignores_another_commands_completion() {
+        let (send, _recv) = bounded(10);
+        let responses = input_stream(&[
+            "* SEARCH 1 2\r\n",
+            "A0002 NO some other command failed\r\n",
+            "A0001 OK SEARCH completed\r\n",
+        ]);
+        let mut stream = async_std::stream::from_iter(responses);
+
+        let id = RequestId("A0001".into());
+        let ids = parse_ids(&mut stream, send, id).await.unwrap();
+
+        assert_eq!(ids, [1, 2].iter().cloned().collect::<HashSet<u32>>());
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn parse_capabilities_reports_a_tagged_bad_as_an_error() {
+        let (send, _recv) = bounded(10);
+        let responses = input_stream(&["A0001 BAD invalid arguments\r\n"]);
+        let mut stream = async_std::stream::from_iter(responses);
+
+        let id = RequestId("A0001".into());
+        let caps = parse_capabilities(&mut stream, send, id).await;
+
+        assert!(matches!(caps, Err(Error::Bad(_))));
     }
 }
