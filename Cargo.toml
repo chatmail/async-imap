@@ -37,7 +37,6 @@ futures-util = {version = "0.3.15", features = ["io"] }
 imap-proto = "0.17"
 log = "0.4.8"
 nom = "8.0"
-pin-project = "1"
 pin-utils = "0.1.0-alpha.4"
 self_cell = "1.0.1"
 stop-token = "0.7"
