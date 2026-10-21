@@ -1165,12 +1165,16 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
             ))
             .await?;
 
-        let Some(res) = self.read_response().await? else {
-            return Err(Error::Append);
-        };
-        let Response::Continue { .. } = res.parsed() else {
-            return Err(Error::Append);
-        };
+        loop {
+            let Some(res) = self.read_response().await? else {
+                return Err(Error::Append);
+            };
+            match res.parsed() {
+                Response::Continue { .. } => break,
+                Response::Done { tag, .. } if tag == &id => return Err(Error::Append),
+                _ => handle_unilateral(res, self.unsolicited_responses_tx.clone()),
+            }
+        }
 
         self.stream.as_mut().write_all(content).await?;
         self.stream.as_mut().write_all(b"\r\n").await?;
@@ -2824,5 +2828,109 @@ mod tests {
             session.stream.inner.written_buf == command.as_bytes().to_vec(),
             "Invalid NOOP command"
         );
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_preserves_unsolicited_responses() {
+        let mut session = mock_session!(MockStream::new(
+            b"* 8 EXISTS\r\n* 3 RECENT\r\n+ OK\r\nA0001 OK APPEND completed\r\n".to_vec()
+        ));
+        session.append("INBOX", None, None, "body").await.unwrap();
+        assert_eq!(
+            session.unsolicited_responses.try_recv().unwrap(),
+            UnsolicitedResponse::Exists(8)
+        );
+        assert_eq!(
+            session.unsolicited_responses.try_recv().unwrap(),
+            UnsolicitedResponse::Recent(3)
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_skips_abandoned_select_responses() {
+        let mut session = mock_session!(MockStream::new(
+            b"* FLAGS (\\Seen)\r\n* 7 EXISTS\r\nA9999 OK [READ-WRITE] SELECT completed\r\n+ OK\r\nA0001 OK APPEND completed\r\n".to_vec()
+        ));
+        session.append("INBOX", None, None, "body").await.unwrap();
+        assert_eq!(
+            session.stream.inner.written_buf,
+            b"A0001 APPEND \"INBOX\" {4}\r\nbody\r\n".to_vec()
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_ignores_other_tags() {
+        for status in ["OK", "NO", "BAD"] {
+            let response =
+                format!("A9999 {status} previous command\r\n+ OK\r\nA0001 OK APPEND completed\r\n");
+            let mut session = mock_session!(MockStream::new(response.into_bytes()));
+            session.append("INBOX", None, None, "body").await.unwrap();
+        }
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_rejects_own_completion_without_literal() {
+        for status in ["OK", "NO", "BAD"] {
+            let response = format!("A0001 {status} APPEND completed\r\n");
+            let mut session = mock_session!(MockStream::new(response.into_bytes()));
+            assert!(session.append("INBOX", None, None, "body").await.is_err());
+            assert_eq!(
+                session.stream.inner.written_buf,
+                b"A0001 APPEND \"INBOX\" {4}\r\n".to_vec()
+            );
+        }
+    }
+
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_stops_on_eof() {
+        let mut session = mock_session!(MockStream::new(b"A9999 OK old command\r\n".to_vec()));
+        assert!(session.append("INBOX", None, None, "body").await.is_err());
+        assert_eq!(
+            session.stream.inner.written_buf,
+            b"A0001 APPEND \"INBOX\" {4}\r\n".to_vec()
+        );
+    }
+
+    /// Tests that APPEND body is sent and tagged APPEND response is read even if the server has already sent BYE response.
+    ///
+    /// According to RFC 9051, when BYE is received
+    /// "the client SHOULD continue to read response data from the server until the connection is closed":
+    /// <https://www.rfc-editor.org/info/rfc9051/#section-7.1.5-4>
+    ///
+    /// Practically we will likely fail to finish sending the message body in this case and tagged response will not arrive.
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    async fn append_continuation_reads_on_bye() {
+        let mut session = mock_session!(MockStream::new(
+            b"* BYE server closing\r\n+ OK\r\nA0001 OK APPEND completed\r\n".to_vec()
+        ));
+        session.append("INBOX", None, None, "body").await.unwrap();
+        assert_eq!(
+            session.stream.inner.written_buf,
+            b"A0001 APPEND \"INBOX\" {4}\r\nbody\r\n".to_vec()
+        );
+        match session.unsolicited_responses.try_recv().unwrap() {
+            UnsolicitedResponse::Other(response) => {
+                assert!(
+                    matches!(
+                        response.parsed(),
+                        Response::Data {
+                            status: Status::Bye,
+                            outcome: imap_proto::Outcome {
+                                code: None,
+                                information: Some(Cow::Borrowed("server closing"))
+                            }
+                        }
+                    ),
+                    "Unexpected other unsolicited response: {response:?}"
+                );
+            }
+            response => panic!("Unexpected unsolicited response: {response:?}"),
+        };
     }
 }
