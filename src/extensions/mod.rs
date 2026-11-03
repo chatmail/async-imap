@@ -7,3 +7,5 @@ pub mod idle;
 pub mod quota;
 
 pub mod id;
+
+pub mod qresync;
