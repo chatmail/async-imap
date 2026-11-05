@@ -14,6 +14,7 @@ use futures_util::{
     task::{Context, Poll},
 };
 use imap_proto::{RequestId, Response, Status};
+use pin_project::pin_project;
 use stop_token::prelude::*;
 #[cfg(feature = "runtime-tokio")]
 use tokio::{
@@ -42,33 +43,31 @@ use crate::types::ResponseData;
 ///
 /// As long as a [`Handle`] is active, the mailbox cannot be otherwise accessed.
 #[derive(Debug)]
+#[pin_project]
 pub struct Handle<T: Read + Write + Unpin + fmt::Debug> {
+    #[pin]
     session: Session<T>,
     id: Option<RequestId>,
 }
-
-impl<T: Read + Write + Unpin + fmt::Debug> Unpin for Handle<T> {}
 
 impl<T: Read + Write + Unpin + fmt::Debug + Send> Stream for Handle<T> {
     type Item = std::io::Result<ResponseData>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.as_mut().session().get_stream().poll_next(cx)
+        self.as_mut().project().session.get_stream().poll_next(cx)
     }
 }
 
 /// A stream of server responses after sending `IDLE`.
 #[derive(Debug)]
 #[must_use = "futures do nothing unless polled"]
+#[pin_project]
 pub struct IdleStream<'a, St> {
+    #[pin]
     stream: &'a mut St,
 }
 
-impl<St: Unpin> Unpin for IdleStream<'_, St> {}
-
 impl<'a, St: Stream + Unpin> IdleStream<'a, St> {
-    unsafe_pinned!(stream: &'a mut St);
-
     pub(crate) fn new(stream: &'a mut St) -> Self {
         IdleStream { stream }
     }
@@ -86,7 +85,7 @@ impl<St: Stream + Unpin> Stream for IdleStream<'_, St> {
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.stream().poll_next(cx)
+        self.project().stream.poll_next(cx)
     }
 }
 
@@ -110,8 +109,6 @@ impl<T: Read + Write + Unpin + fmt::Debug> AsMut<T> for Handle<T> {
 }
 
 impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
-    unsafe_pinned!(session: Session<T>);
-
     pub(crate) fn new(session: Session<T>) -> Handle<T> {
         Handle { session, id: None }
     }

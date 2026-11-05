@@ -13,6 +13,7 @@ use extensions::quota::parse_get_quota_root;
 use futures_util::{Stream, TryStreamExt, io};
 use imap_proto::rfc5464::Metadata;
 use imap_proto::{RequestId, Response};
+use pin_project::pin_project;
 #[cfg(feature = "runtime-tokio")]
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
 
@@ -39,7 +40,9 @@ macro_rules! quote {
 // Both `Client` and `Session` deref to [`Connection`](struct.Connection.html), the underlying
 // primitives type.
 #[derive(Debug)]
+#[pin_project]
 pub struct Session<T: Read + Write + Unpin + fmt::Debug> {
+    #[pin]
     pub(crate) conn: Connection<T>,
     pub(crate) unsolicited_responses_tx: channel::Sender<UnsolicitedResponse>,
 
@@ -47,10 +50,6 @@ pub struct Session<T: Read + Write + Unpin + fmt::Debug> {
     /// [unilateral server responses in RFC 3501](https://tools.ietf.org/html/rfc3501#section-7).
     pub unsolicited_responses: channel::Receiver<UnsolicitedResponse>,
 }
-
-impl<T: Read + Write + Unpin + fmt::Debug> Unpin for Session<T> {}
-impl<T: Read + Write + Unpin + fmt::Debug> Unpin for Client<T> {}
-impl<T: Read + Write + Unpin + fmt::Debug> Unpin for Connection<T> {}
 
 // Make it possible to access the inner connection and modify its settings, such as read/write
 // timeouts.
@@ -75,7 +74,9 @@ pub struct Client<T: Read + Write + Unpin + fmt::Debug> {
 /// The underlying primitives type. Both `Client`(unauthenticated) and `Session`(after succesful
 /// login) use a `Connection` internally for the TCP stream primitives.
 #[derive(Debug)]
+#[pin_project]
 pub struct Connection<T: Read + Write + Unpin + fmt::Debug> {
+    #[pin]
     pub(crate) stream: ImapStream<T>,
 
     /// Manages the request ids.
@@ -344,10 +345,8 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
 }
 
 impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
-    unsafe_pinned!(conn: Connection<T>);
-
     pub(crate) fn get_stream(self: Pin<&mut Self>) -> Pin<&mut ImapStream<T>> {
-        self.conn().stream()
+        self.project().conn.project().stream
     }
 
     // not public, just to avoid duplicating the channel creation code
@@ -1396,8 +1395,6 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
 }
 
 impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
-    unsafe_pinned!(stream: ImapStream<T>);
-
     /// Gets a reference to the underlying stream.
     pub fn get_ref(&self) -> &T {
         self.stream.get_ref()
