@@ -67,8 +67,6 @@ pub struct IdleStream<'a, St> {
 impl<St: Unpin> Unpin for IdleStream<'_, St> {}
 
 impl<'a, St: Stream + Unpin> IdleStream<'a, St> {
-    unsafe_pinned!(stream: &'a mut St);
-
     pub(crate) fn new(stream: &'a mut St) -> Self {
         IdleStream { stream }
     }
@@ -86,7 +84,7 @@ impl<St: Stream + Unpin> Stream for IdleStream<'_, St> {
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.stream().poll_next(cx)
+        Pin::new(&mut *self.get_mut().stream).poll_next(cx)
     }
 }
 
@@ -110,7 +108,9 @@ impl<T: Read + Write + Unpin + fmt::Debug> AsMut<T> for Handle<T> {
 }
 
 impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
-    unsafe_pinned!(session: Session<T>);
+    fn session(self: Pin<&mut Self>) -> Pin<&mut Session<T>> {
+        Pin::new(&mut self.get_mut().session)
+    }
 
     pub(crate) fn new(session: Session<T>) -> Handle<T> {
         Handle { session, id: None }
