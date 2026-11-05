@@ -90,6 +90,7 @@ mod client;
 pub mod error;
 pub mod extensions;
 mod imap_stream;
+pub use imap_stream::{LiteralAwareResponse, LiteralPrefix};
 mod parse;
 pub mod types;
 
