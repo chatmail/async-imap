@@ -4,7 +4,6 @@ version = "0.12.0"
 authors = ["dignifiedquire <me@dignifiedquire.com>"]
 documentation = "https://docs.rs/async-imap/"
 repository = "https://github.com/async-email/async-imap"
-homepage = "https://github.com/async-email/async-imap"
 description = "Async IMAP client for Rust"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
