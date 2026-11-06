@@ -6,7 +6,7 @@ use futures_util::{StreamExt as _, TryStreamExt as _, io};
 use imap_proto::rfc5464::Metadata;
 use imap_proto::{self, MailboxDatum, RequestId, Response};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, StatusResponse};
 use crate::types::ResponseData;
 use crate::types::*;
 
@@ -113,10 +113,10 @@ pub(crate) async fn parse_status<T: Stream<Item = io::Result<ResponseData>> + Un
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                        return Err(Error::Bad(StatusResponse::new(resp)));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("outcome: {outcome:?}")));
+                        return Err(Error::No(StatusResponse::new(resp)));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -245,10 +245,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                        return Err(Error::Bad(StatusResponse::new(resp)));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("outcome: {outcome:?}")));
+                        return Err(Error::No(StatusResponse::new(resp)));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -285,10 +285,10 @@ pub(crate) async fn parse_mailbox<T: Stream<Item = io::Result<ResponseData>> + U
                         }
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                        return Err(Error::Bad(StatusResponse::new(resp)));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("outcome: {outcome:?}")));
+                        return Err(Error::No(StatusResponse::new(resp)));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -738,6 +738,12 @@ mod tests {
         let mailbox = parse_mailbox(&mut stream, send, id).await;
         assert!(recv.is_empty());
 
-        assert!(matches!(mailbox, Err(Error::No(_))));
+        let Err(Error::No(response)) = mailbox else {
+            unreachable!("parse_mailbox should fail with NO");
+        };
+        assert_eq!(
+            response.information(),
+            Some("Mailbox doesn't exist: DeltaChat (0.001 + 0.140 + 0.139 secs).")
+        );
     }
 }
