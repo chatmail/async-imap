@@ -1,9 +1,13 @@
 //! IMAP error types.
 
+use std::fmt;
 use std::io::Error as IoError;
 use std::str::Utf8Error;
 
 use base64::DecodeError;
+use imap_proto::{Outcome, Response, ResponseCode};
+
+use crate::types::ResponseData;
 
 /// A convenience wrapper around `Result` for `imap::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -17,10 +21,10 @@ pub enum Error {
     Io(#[from] IoError),
     /// A BAD response from the IMAP server.
     #[error("bad response: {0}")]
-    Bad(String),
+    Bad(StatusResponse),
     /// A NO response from the IMAP server.
     #[error("no response: {0}")]
-    No(String),
+    No(StatusResponse),
     /// The connection was terminated unexpectedly.
     #[error("connection lost")]
     ConnectionLost,
@@ -34,6 +38,43 @@ pub enum Error {
     /// Error appending an e-mail.
     #[error("could not append mail to mailbox")]
     Append,
+}
+
+/// A NO or BAD response from the server.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StatusResponse(ResponseData);
+
+impl StatusResponse {
+    pub(crate) fn new(response: ResponseData) -> Self {
+        Self(response)
+    }
+
+    /// The response code, if the server sent one that `imap-proto` knows, such as `ALERT`.
+    pub fn code(&self) -> Option<&ResponseCode<'_>> {
+        self.outcome()?.code.as_ref()
+    }
+
+    /// The human-readable text of the response.
+    ///
+    /// Response codes that `imap-proto` does not know stay at the start of the text, such as
+    /// the [RFC 5530](https://tools.ietf.org/html/rfc5530) codes in
+    /// `[AUTHENTICATIONFAILED] Authentication failed.`
+    pub fn information(&self) -> Option<&str> {
+        self.outcome()?.information.as_deref()
+    }
+
+    fn outcome(&self) -> Option<&Outcome<'_>> {
+        match self.0.parsed() {
+            Response::Done { outcome, .. } | Response::Data { outcome, .. } => Some(outcome),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for StatusResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "code: {:?}, info: {:?}", self.code(), self.information())
+    }
 }
 
 /// An error occured while trying to parse a server response.

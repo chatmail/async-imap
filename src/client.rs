@@ -18,7 +18,7 @@ use pin_project::pin_project;
 use tokio::io::{AsyncRead as Read, AsyncWrite as Write, AsyncWriteExt};
 
 use super::authenticator::Authenticator;
-use super::error::{Error, ParseError, Result, ValidateError};
+use super::error::{Error, ParseError, Result, StatusResponse, ValidateError};
 use super::parse::*;
 use super::types::*;
 use crate::extensions::{self, quota::parse_get_quota};
@@ -210,33 +210,22 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
                 return Err((Error::ConnectionLost, self));
             };
 
-            if let Response::Done {
-                status,
-                outcome,
-                tag,
-            } = res.parsed()
+            if let Response::Done { tag, .. } = res.parsed()
                 && *tag == id
             {
-                ok_or_unauth_client_err!(
-                    self.check_status_ok(
-                        status,
-                        outcome.code.as_ref(),
-                        outcome.information.as_deref()
-                    ),
-                    self
-                );
+                let res = ok_or_unauth_client_err!(self.check_status_ok(res), self);
 
-                let capabilities =
-                    if let Some(imap_proto::ResponseCode::Capabilities(capabilities)) =
+                let capabilities = if let Response::Done { outcome, .. } = res.parsed()
+                    && let Some(imap_proto::ResponseCode::Capabilities(capabilities)) =
                         &outcome.code
-                    {
-                        use crate::types::{Capabilities, Capability};
-                        let capability_set: HashSet<Capability> =
-                            capabilities.iter().map(Capability::from).collect();
-                        Some(Capabilities(capability_set))
-                    } else {
-                        None
-                    };
+                {
+                    use crate::types::{Capabilities, Capability};
+                    let capability_set: HashSet<Capability> =
+                        capabilities.iter().map(Capability::from).collect();
+                    Some(Capabilities(capability_set))
+                } else {
+                    None
+                };
                 return Ok((Session::new(self.conn), capabilities));
             }
         }
@@ -1463,19 +1452,11 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
         mut response: ResponseData,
     ) -> Result<()> {
         loop {
-            if let Response::Done {
-                tag,
-                status,
-                outcome,
-            } = response.parsed()
-            {
-                self.check_status_ok(
-                    status,
-                    outcome.code.as_ref(),
-                    outcome.information.as_deref(),
-                )?;
+            if let Response::Done { tag, .. } = response.parsed() {
+                let done = tag == id;
+                response = self.check_status_ok(response)?;
 
-                if tag == id {
+                if done {
                     return Ok(());
                 }
             }
@@ -1491,19 +1472,23 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
         }
     }
 
-    pub(crate) fn check_status_ok(
-        &self,
-        status: &imap_proto::Status,
-        code: Option<&imap_proto::ResponseCode<'_>>,
-        information: Option<&str>,
-    ) -> Result<()> {
+    /// Returns the status response if its status is OK, or the matching error.
+    pub(crate) fn check_status_ok(&self, response: ResponseData) -> Result<ResponseData> {
         use imap_proto::Status;
+        let (status, outcome) = match response.parsed() {
+            Response::Done {
+                status, outcome, ..
+            }
+            | Response::Data { status, outcome } => (status, outcome),
+            _ => return Ok(response),
+        };
         match status {
-            Status::Ok => Ok(()),
-            Status::Bad => Err(Error::Bad(format!("code: {code:?}, info: {information:?}"))),
-            Status::No => Err(Error::No(format!("code: {code:?}, info: {information:?}"))),
+            Status::Ok => Ok(response),
+            Status::Bad => Err(Error::Bad(StatusResponse::new(response))),
+            Status::No => Err(Error::No(StatusResponse::new(response))),
             _ => Err(Error::Io(io::Error::other(format!(
-                "status: {status:?}, code: {code:?}, information: {information:?}"
+                "status: {status:?}, code: {:?}, information: {:?}",
+                outcome.code, outcome.information
             )))),
         }
     }
@@ -1676,6 +1661,57 @@ mod tests {
         assert!(
             result.is_ok(),
             "LOGIN must use only its matching completion"
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_no_response() {
+        let response = b"A0001 NO [AUTHENTICATIONFAILED] Authentication failed.\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        let Err((Error::No(response), _)) = client.login("username", "password").await else {
+            unreachable!("login should fail with NO");
+        };
+        assert_eq!(response.code(), None);
+        assert_eq!(
+            response.information(),
+            Some("[AUTHENTICATIONFAILED] Authentication failed.")
+        );
+        assert_eq!(
+            Error::No(response).to_string(),
+            r#"no response: code: None, info: Some("[AUTHENTICATIONFAILED] Authentication failed.")"#
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn login_no_response_with_alert() {
+        let response = b"A0001 NO [ALERT] Please log in via your web browser\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let client = mock_client!(mock_stream);
+        let Err((Error::No(response), _)) = client.login("username", "password").await else {
+            unreachable!("login should fail with NO");
+        };
+        assert_eq!(response.code(), Some(&imap_proto::ResponseCode::Alert));
+        assert_eq!(
+            response.information(),
+            Some("Please log in via your web browser")
+        );
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn create_bad_response() {
+        let response = b"A0001 BAD [CLIENTBUG] Invalid mailbox name\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let Err(Error::Bad(response)) = session.create("INBOX").await else {
+            unreachable!("create should fail with BAD");
+        };
+        assert_eq!(
+            response.information(),
+            Some("[CLIENTBUG] Invalid mailbox name")
         );
     }
 
