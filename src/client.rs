@@ -21,6 +21,7 @@ use super::authenticator::Authenticator;
 use super::error::{Error, ParseError, Result, ValidateError};
 use super::parse::*;
 use super::types::*;
+use crate::extensions::qresync::Qresync;
 use crate::extensions::{self, quota::parse_get_quota};
 use crate::imap_stream::ImapStream;
 
@@ -408,6 +409,27 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         .await?;
 
         Ok(mbox)
+    }
+
+    /// Selects a mailbox with `(QRESYNC)` parameter as defined in
+    /// [RFC 7162](https://www.rfc-editor.org/rfc/rfc7162.html#section-3.2.5).
+    pub async fn select_qresync<S1: AsRef<str>, S2: AsRef<str>, S3: AsRef<str>>(
+        &mut self,
+        mailbox_name: S1,
+        uid_validity: u32,
+        highest_modseq: u64,
+        known_uid_set_opt: Option<S2>,
+        known_sequence_ranges_opt: Option<S3>,
+    ) -> Result<Qresync> {
+        Qresync::select(
+            self,
+            mailbox_name,
+            uid_validity,
+            highest_modseq,
+            known_uid_set_opt,
+            known_sequence_ranges_opt,
+        )
+        .await
     }
 
     /// The `EXAMINE` command is identical to [`Session::select`] and returns the same output;
@@ -1509,7 +1531,7 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     }
 }
 
-fn validate_str(value: &str) -> Result<String> {
+pub(crate) fn validate_str(value: &str) -> Result<String> {
     let quoted = quote!(value);
     if quoted.find('\n').is_some() {
         return Err(Error::Validate(ValidateError('\n')));
