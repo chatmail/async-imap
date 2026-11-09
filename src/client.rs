@@ -2804,6 +2804,24 @@ mod tests {
         }
     }
 
+    /// Tests IDLE command failing with a BAD response without text.
+    ///
+    /// This is a regression test, async-imap 0.12.0 panicked in this case.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn test_idle_bad_no_information() {
+        let response = b"A0001 BAD\r\n".to_vec();
+        let mock_stream = MockStream::new(response);
+        let session = mock_session!(mock_stream);
+        let mut idle_handle = session.idle();
+        assert!(idle_handle.init().await.is_err());
+        assert_eq!(
+            idle_handle.as_mut().written_buf,
+            b"A0001 IDLE\r\n",
+            "Invalid NOOP command"
+        );
+    }
+
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn test_parsing_error() {
