@@ -12,18 +12,15 @@ impl IdGenerator {
     pub fn new() -> Self {
         Self { next: 0 }
     }
+
+    pub fn next(&mut self) -> RequestId {
+        self.next += 1;
+        RequestId(format!("A{:04}", self.next % 10_000))
+    }
 }
 
 impl Default for IdGenerator {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Iterator for IdGenerator {
-    type Item = RequestId;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next += 1;
-        Some(RequestId(format!("A{:04}", self.next % 10_000)))
     }
 }
