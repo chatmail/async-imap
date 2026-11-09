@@ -1414,7 +1414,7 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     }
 
     pub(crate) async fn run_command(&mut self, command: &str) -> Result<RequestId> {
-        let request_id = self.request_ids.next().unwrap(); // safe: never returns Err
+        let request_id = self.request_ids.next();
         self.stream
             .encode(Request(Some(request_id.clone()), command.as_bytes().into()))
             .await?;
