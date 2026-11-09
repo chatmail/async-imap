@@ -76,6 +76,7 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
 
 #[cfg(not(any(feature = "runtime-tokio", feature = "runtime-async-std")))]
 compile_error!("one of 'runtime-async-std' or 'runtime-tokio' features must be enabled");
