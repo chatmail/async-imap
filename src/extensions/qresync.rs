@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead as Read, AsyncWrite as Write};
 
 use crate::Session;
 use crate::client::validate_str;
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, StatusResponse};
 use crate::parse::{filter, handle_unilateral};
 use crate::types::*;
 
@@ -118,10 +118,10 @@ pub(crate) async fn parse_enable_qresync<T: Stream<Item = io::Result<ResponseDat
                         break;
                     }
                     Status::Bad => {
-                        return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                        return Err(Error::Bad(StatusResponse::new(resp)));
                     }
                     Status::No => {
-                        return Err(Error::No(format!("outcome: {outcome:?}")));
+                        return Err(Error::No(StatusResponse::new(resp)));
                     }
                     _ => {
                         return Err(Error::Io(io::Error::other(format!(
@@ -159,10 +159,10 @@ pub(crate) async fn parse_mailbox_qresync<T: Stream<Item = io::Result<ResponseDa
                     break;
                 }
                 Status::Bad => {
-                    return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                    return Err(Error::Bad(StatusResponse::new(resp)));
                 }
                 Status::No => {
-                    return Err(Error::No(format!("outcome: {outcome:?}")));
+                    return Err(Error::No(StatusResponse::new(resp)));
                 }
                 _ => {
                     return Err(Error::Io(io::Error::other(format!(
@@ -195,10 +195,10 @@ pub(crate) async fn parse_mailbox_qresync<T: Stream<Item = io::Result<ResponseDa
                     }
                 }
                 Status::Bad => {
-                    return Err(Error::Bad(format!("outcome: {outcome:?}")));
+                    return Err(Error::Bad(StatusResponse::new(resp)));
                 }
                 Status::No => {
-                    return Err(Error::No(format!("outcome: {outcome:?}")));
+                    return Err(Error::No(StatusResponse::new(resp)));
                 }
                 _ => {
                     return Err(Error::Io(io::Error::other(format!(
