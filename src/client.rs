@@ -2812,7 +2812,14 @@ mod tests {
         let command = "A0001 NOOP\r\n";
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
-        assert!(session.noop().await.is_err());
+        assert!(
+            session
+                .noop()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("220 mail.example.org ESMTP Postcow")
+        );
         assert!(
             session.stream.inner.written_buf == command.as_bytes().to_vec(),
             "Invalid NOOP command"
