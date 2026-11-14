@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::str;
@@ -22,7 +23,7 @@ use super::error::{Error, ParseError, Result, StatusResponse, ValidateError};
 use super::parse::*;
 use super::types::*;
 use crate::extensions::{self, quota::parse_get_quota};
-use crate::imap_stream::ImapStream;
+use crate::imap_stream::{ImapStream, LiteralAwareResponse};
 
 macro_rules! quote {
     ($x:expr) => {
@@ -140,6 +141,19 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
         Client {
             conn: Connection {
                 stream,
+                request_ids: IdGenerator::new(),
+            },
+        }
+    }
+
+    /// Creates a client with a configurable limit for each response buffer.
+    /// The default limit used by [`Client::new`] is 512 MiB.
+    /// Metadata-only clients should configure a smaller limit based on their expected
+    /// response sizes. The limit includes response headers as well as literal data.
+    pub fn new_with_max_response_size(stream: T, max_response_size: NonZeroUsize) -> Client<T> {
+        Client {
+            conn: Connection {
+                stream: ImapStream::new_with_max_response_size(stream, max_response_size),
                 request_ids: IdGenerator::new(),
             },
         }
@@ -1385,6 +1399,20 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
     pub async fn read_response(&mut self) -> io::Result<Option<ResponseData>> {
         self.conn.read_response().await
     }
+    /// Reads one response, retaining a prefix when a literal exceeds `literal_prefix_limit`.
+    ///
+    /// A prefix outcome ends the response stream without draining the rest of the literal.
+    /// Further command writes fail with [`io::ErrorKind::BrokenPipe`].
+    /// The caller must drop the connection and reconnect before issuing more commands.
+    /// The response buffer limit also applies, including response headers before the literal.
+    pub async fn read_response_with_literal_prefix(
+        &mut self,
+        literal_prefix_limit: NonZeroUsize,
+    ) -> io::Result<Option<LiteralAwareResponse>> {
+        self.conn
+            .read_response_with_literal_prefix(literal_prefix_limit)
+            .await
+    }
 }
 
 impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
@@ -1407,6 +1435,22 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
     /// Read the next response on the connection.
     pub async fn read_response(&mut self) -> io::Result<Option<ResponseData>> {
         self.stream.try_next().await
+    }
+
+    /// Reads one response, retaining a prefix when a literal exceeds `literal_prefix_limit`.
+    ///
+    /// A prefix outcome ends the response stream without draining the rest of the literal.
+    /// Further command writes fail with [`io::ErrorKind::BrokenPipe`].
+    /// The caller must drop the connection and reconnect before issuing more commands.
+    /// The response buffer limit also applies, including response headers before the literal.
+    pub async fn read_response_with_literal_prefix(
+        &mut self,
+        literal_prefix_limit: NonZeroUsize,
+    ) -> io::Result<Option<LiteralAwareResponse>> {
+        self.stream
+            .next_with_literal_prefix(literal_prefix_limit)
+            .await
+            .transpose()
     }
 
     pub(crate) async fn run_command_untagged(&mut self, command: &str) -> Result<()> {

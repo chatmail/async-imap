@@ -176,9 +176,10 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Session<T> {
         conn.run_command_and_check_ok("COMPRESS DEFLATE", Some(unsolicited_responses_tx.clone()))
             .await?;
 
+        let max_response_size = conn.stream.max_response_size();
         let stream = conn.into_inner();
         let deflate_stream = DeflateStream::new(stream);
-        let stream = ImapStream::new(f(deflate_stream));
+        let stream = ImapStream::new_with_max_response_size(f(deflate_stream), max_response_size);
         let conn = Connection {
             stream,
             request_ids: IdGenerator::new(),
