@@ -23,7 +23,7 @@ pub struct ImapStream<R: Read + Write> {
     pub(crate) inner: R,
     /// Number of bytes the next decode operation needs if known.
     /// If the buffer contains less than this, it is a waste of time to try to parse it.
-    /// If unknown, set it to 0, so decoding is always attempted.
+    /// If unknown, set it to 1 so that decoding is attempted when any data is available.
     decode_needs: usize,
     /// The buffer.
     buffer: BytesMut,
@@ -46,7 +46,7 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
         ImapStream {
             inner,
             buffer: BytesMut::with_capacity(Self::INITIAL_CAPACITY),
-            decode_needs: 0,
+            decode_needs: 1,
             read_closed: false,
         }
     }
@@ -109,7 +109,7 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
             match imap_proto::Response::parse(buf) {
                 Ok((remaining, response)) => {
                     // TODO: figure out if we can use a minimum required size for a response.
-                    self.decode_needs = 0;
+                    self.decode_needs = 1;
                     // Would be better to use `buf.split_off()` instead of copying, but the main
                     // problem is, even if `buf` were `&mut`, `imap_proto::Response::parse()`
                     // borrowing the whole buffer immutably, so we can't pass it as `&mut` to
@@ -129,17 +129,14 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 }
                 Err(nom::Err::Incomplete(_)) => {
                     log::trace!("decode: incomplete data, need unknown number of bytes");
-                    self.decode_needs = 0;
+                    self.decode_needs = buf.len() + 1;
                     Err(None)
                 }
-                Err(other) => {
-                    self.decode_needs = 0;
-                    Err(Some(io::Error::other(format!(
-                        "{:?} during parsing of {:?}",
-                        other,
-                        String::from_utf8_lossy(buf)
-                    ))))
-                }
+                Err(other) => Err(Some(io::Error::other(format!(
+                    "{:?} during parsing of {:?}",
+                    other,
+                    String::from_utf8_lossy(buf)
+                )))),
             }
         });
         match res {
