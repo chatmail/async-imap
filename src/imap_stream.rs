@@ -260,64 +260,55 @@ mod tests {
 
     use pin_project::pin_project;
 
-    /// Wrapper for a stream that
-    /// fails once on a first read.
+    #[cfg(feature = "runtime-tokio")]
+    type PollRead = Poll<tokio::io::Result<()>>;
+    #[cfg(feature = "runtime-async-std")]
+    type PollRead = Poll<async_std::io::Result<usize>>;
+
+    #[cfg(feature = "runtime-tokio")]
+    type ReadBuf<'a> = tokio::io::ReadBuf<'a>;
+    #[cfg(feature = "runtime-async-std")]
+    type ReadBuf<'a> = [u8];
+
+    /// Wrapper for a stream that injects `PollRead` on a first read.
     ///
     /// Writes are discarded.
     #[pin_project]
-    struct FailingStream {
+    struct ReadInjectingStream {
         #[pin]
         inner: &'static [u8],
-        has_failed: bool,
+        injection: Option<PollRead>,
     }
 
-    impl FailingStream {
-        fn new(buf: &'static [u8]) -> Self {
+    impl ReadInjectingStream {
+        fn new(buf: &'static [u8], injection: PollRead) -> Self {
             Self {
                 inner: buf,
-                has_failed: false,
+                injection: Some(injection),
+            }
+        }
+    }
+
+    impl Read for ReadInjectingStream {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> PollRead {
+            let this = self.project();
+            match this.injection.take() {
+                Some(Poll::Pending) => {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+                Some(i) => i,
+                None => this.inner.poll_read(cx, buf),
             }
         }
     }
 
     #[cfg(feature = "runtime-tokio")]
-    impl Read for FailingStream {
-        fn poll_read(
-            self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &mut tokio::io::ReadBuf<'_>,
-        ) -> Poll<tokio::io::Result<()>> {
-            let this = self.project();
-            if !*this.has_failed {
-                *this.has_failed = true;
-
-                Poll::Ready(Err(std::io::Error::other("Failure")))
-            } else {
-                this.inner.poll_read(cx, buf)
-            }
-        }
-    }
-
-    #[cfg(feature = "runtime-async-std")]
-    impl Read for FailingStream {
-        fn poll_read(
-            self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &mut [u8],
-        ) -> Poll<async_std::io::Result<usize>> {
-            let this = self.project();
-            if !*this.has_failed {
-                *this.has_failed = true;
-
-                Poll::Ready(Err(std::io::Error::other("Failure")))
-            } else {
-                this.inner.poll_read(cx, buf)
-            }
-        }
-    }
-
-    #[cfg(feature = "runtime-tokio")]
-    impl Write for FailingStream {
+    impl Write for ReadInjectingStream {
         fn poll_write(
             self: Pin<&mut Self>,
             _cx: &mut Context<'_>,
@@ -339,7 +330,7 @@ mod tests {
     }
 
     #[cfg(feature = "runtime-async-std")]
-    impl Write for FailingStream {
+    impl Write for ReadInjectingStream {
         fn poll_write(
             self: Pin<&mut Self>,
             _cx: &mut Context<'_>,
@@ -375,13 +366,32 @@ mod tests {
     async fn test_imap_stream_error() {
         use futures_util::StreamExt;
 
-        let mock_stream = FailingStream::new(b"* OK\r\n");
+        let mock_stream = ReadInjectingStream::new(
+            b"* OK\r\n",
+            Poll::Ready(Err(std::io::Error::other("Failure"))),
+        );
         let mut imap_stream = ImapStream::new(mock_stream);
 
         // First call is an error because underlying stream fails.
         assert!(imap_stream.next().await.unwrap().is_err());
 
         // IMAP stream should end even though underlying stream fails only once.
+        assert!(imap_stream.next().await.is_none());
+    }
+
+    /// Tests that an underlying stream returning `Poll::Pending` doesn't lead to received data
+    /// corruption which is possible e.g. if `ImapStream::do_poll_next()` forgets to truncate back
+    /// its buffer.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn test_imap_stream_read_pending() {
+        use futures_util::StreamExt;
+
+        let mock_stream = ReadInjectingStream::new(b"* OK\r\n", Poll::Pending);
+        let mut imap_stream = ImapStream::new(mock_stream);
+        let Some(Ok(_response_data)) = imap_stream.next().await else {
+            unreachable!();
+        };
         assert!(imap_stream.next().await.is_none());
     }
 }
