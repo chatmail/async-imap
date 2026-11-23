@@ -39,11 +39,13 @@ pub struct ImapStream<R: Read + Write> {
 }
 
 impl<R: Read + Write + Unpin> ImapStream<R> {
+    const CAPACITY_INITIAL: usize = 1024 * 4;
+
     /// Creates a new `ImapStream` based on the given `Read`er.
     pub fn new(inner: R) -> Self {
         ImapStream {
             inner,
-            buffer: BytesMut::new(),
+            buffer: BytesMut::with_capacity(Self::CAPACITY_INITIAL),
             decode_needs: 0,
             read_closed: false,
         }
@@ -108,15 +110,30 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 Ok((remaining, response)) => {
                     // TODO: figure out if we can use a minimum required size for a response.
                     self.decode_needs = 0;
-                    // TODO: use buf.split_off() instead of copying
-                    self.buffer = BytesMut::new();
+                    // Would be better to use `buf.split_off()` instead of copying, but the main
+                    // problem is, even if `buf` were `&mut`, `imap_proto::Response::parse()`
+                    // borrowing the whole buffer immutably, so we can't pass it as `&mut` to
+                    // `split_off()`. `parse()` should take an owned buffer and perform splitting on
+                    // its own.
+                    //
+                    // Ok, reserve at least `CAPACITY_INITIAL` to avoid extra reallocations if the
+                    // remainder is a partial next response.
+                    if remaining.len() < Self::CAPACITY_INITIAL {
+                        self.buffer.reserve(Self::CAPACITY_INITIAL);
+                    }
                     self.buffer
                         .extend_from_slice(&buf[buf.len() - remaining.len()..]);
                     Ok(response)
                 }
                 Err(nom::Err::Incomplete(Needed::Size(min))) => {
                     log::trace!("decode: incomplete data, need minimum {min} bytes");
-                    self.decode_needs = self.buffer.len() + usize::from(min);
+                    let received = buf.len();
+                    if received == 0 {
+                        return Err(Some(io::Error::other(
+                            "decode: internal error: received == 0".to_string(),
+                        )));
+                    }
+                    self.decode_needs = received + usize::from(min);
                     Err(None)
                 }
                 Err(nom::Err::Incomplete(_)) => {
@@ -155,12 +172,9 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
             return Poll::Ready(Some(Ok(response)));
         }
         loop {
-            if this.buffer.capacity() < this.decode_needs {
-                this.buffer
-                    .reserve(this.decode_needs - this.buffer.capacity());
-            }
+            this.buffer.reserve(this.decode_needs - this.buffer.len());
             if this.buffer.capacity() == this.buffer.len() {
-                this.buffer.reserve(1);
+                this.buffer.reserve(Self::CAPACITY_INITIAL);
             }
 
             #[cfg(feature = "runtime-async-std")]
