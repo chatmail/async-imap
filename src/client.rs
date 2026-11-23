@@ -2828,6 +2828,22 @@ mod tests {
 
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn test_response_too_long() {
+        let response = b"* METADATA \"\" (/shared/admin {1024024024}\r\n".to_vec();
+
+        let mock_stream = MockStream::new(response);
+        let mut session = mock_session!(mock_stream);
+        let err_str = session
+            .get_metadata("", "", "/shared/admin")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err_str.contains("decode_needs ("));
+        assert!(err_str.contains(") > CAPACITY_MAX ("));
+    }
+
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn test_parsing_error() {
         // Simulate someone connecting to SMTP server with IMAP client.
         let response = b"220 mail.example.org ESMTP Postcow\r\n".to_vec();
