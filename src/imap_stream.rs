@@ -40,6 +40,7 @@ pub struct ImapStream<R: Read + Write> {
 
 impl<R: Read + Write + Unpin> ImapStream<R> {
     const CAPACITY_INITIAL: usize = 1024 * 4;
+    const CAPACITY_MAX: usize = 512 * 1024 * 1024; // 512 MiB
 
     /// Creates a new `ImapStream` based on the given `Read`er.
     pub fn new(inner: R) -> Self {
@@ -133,8 +134,17 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                             "decode: internal error: received == 0".to_string(),
                         )));
                     }
-                    self.decode_needs = received + usize::from(min);
-                    Err(None)
+                    let decode_needs = received.saturating_add(usize::from(min));
+                    match decode_needs > Self::CAPACITY_MAX {
+                        true => Err(Some(io::Error::other(format!(
+                            "decode: decode_needs ({decode_needs}) > CAPACITY_MAX ({})",
+                            Self::CAPACITY_MAX,
+                        )))),
+                        false => {
+                            self.decode_needs = decode_needs;
+                            Err(None)
+                        }
+                    }
                 }
                 Err(nom::Err::Incomplete(_)) => {
                     log::trace!("decode: incomplete data, need unknown number of bytes");
@@ -169,7 +179,8 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
             return Poll::Ready(Some(Ok(response)));
         }
         loop {
-            this.buffer.reserve(this.decode_needs - this.buffer.len());
+            this.buffer
+                .reserve(this.decode_needs.saturating_sub(this.buffer.len()));
             if this.buffer.capacity() == this.buffer.len() {
                 this.buffer.reserve(Self::CAPACITY_INITIAL);
             }
@@ -181,14 +192,18 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
                 // Unfortunate, but async-std has no way to read into MaybeUninit
                 this.buffer.resize(capacity, 0);
                 let spare_capacity = &mut this.buffer[start..capacity];
-                match ready!(Pin::new(&mut this.inner).poll_read(cx, spare_capacity)) {
-                    Ok(n) => {
+                match Pin::new(&mut this.inner).poll_read(cx, spare_capacity) {
+                    Poll::Ready(Ok(n)) => {
                         this.buffer.truncate(start + n);
                         Ok(n)
                     }
-                    Err(e) => {
+                    Poll::Ready(Err(e)) => {
                         this.buffer.truncate(start);
                         Err(e)
+                    }
+                    Poll::Pending => {
+                        this.buffer.truncate(start);
+                        return Poll::Pending;
                     }
                 }?
             };
